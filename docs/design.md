@@ -25,7 +25,7 @@ It is a **control plane (orchestration kernel)** that:
 * Assign task IDs
 * Track lifecycle:
 
-  * pending → planning → executing → completed/failed
+  * pending → planning → executing → completed/failed/cancelled
 
 ---
 
@@ -44,7 +44,7 @@ It is a **control plane (orchestration kernel)** that:
 * Determine:
 
   * execution order
-  * dependencies
+  * dependencies (DAG)
   * parallelism
 
 Deterministic system logic
@@ -64,7 +64,7 @@ Must be deterministic
 
 ---
 
-### 2.5 State Management (UPDATED)
+### 2.5 State Management
 
 #### Tiered State Model
 
@@ -202,7 +202,7 @@ No direct agent-to-agent interaction is allowed.
 
 ### 3.2 Message Types
 
-#### Request (synchronous)
+#### Request (synchronous or async)
 
 ```json
 {
@@ -210,9 +210,29 @@ No direct agent-to-agent interaction is allowed.
   "from": "agent_id",
   "capability": "string",
   "input": {...},
-  "task_id": "uuid"
+  "task_id": "uuid",
+  "step_id": "uuid",
+  "mode": "sync | async"
 }
 ```
+
+---
+
+#### Response (strict)
+
+```json
+{
+  "success": true,
+  "output": {...},
+  "error": null,
+  "metrics": {
+    "latency_ms": 1200
+  }
+}
+```
+
+Must conform to `output_schema`.
+Non-conforming → hard failure.
 
 ---
 
@@ -223,7 +243,24 @@ No direct agent-to-agent interaction is allowed.
   "type": "EVENT",
   "name": "string",
   "payload": {...},
-  "task_id": "uuid"
+  "task_id": "uuid",
+  "step_id": "uuid"
+}
+```
+
+---
+
+#### Error Object
+
+When `success` is false, the `error` field must contain:
+
+```json
+{
+  "error": {
+    "code": "SCHEMA_VIOLATION | TIMEOUT | POLICY_DENIED | INTERNAL | UNKNOWN",
+    "message": "human-readable description",
+    "retryable": true
+  }
 }
 ```
 
@@ -274,7 +311,30 @@ Orchestrator Kernel
 
 ---
 
-### 3.6 Policy Enforcement in Communication
+### 3.6 Event Catalog
+
+#### System Events (emitted by Kernel)
+
+| Event Name       | When                                    |
+| :--------------- | :-------------------------------------- |
+| STEP_COMPLETED   | step finished successfully              |
+| STEP_FAILED      | step failed after exhausting retries    |
+| TASK_COMPLETED   | all steps done                          |
+| TASK_FAILED      | unrecoverable failure                   |
+| TASK_CANCELLED   | user or system cancelled                |
+| AGENT_REGISTERED | new agent attached                      |
+| AGENT_EJECTED    | agent quarantined/blacklisted           |
+| PLAN_GENERATED   | planner produced new steps              |
+
+#### Subscribers
+
+* **Client**: subscribes via WebSocket/SSE to task-level events.
+* **Audit Log**: subscribes to all events (mandatory).
+* **Agents**: cannot subscribe to events. They only respond to requests.
+
+---
+
+### 3.7 Policy Enforcement in Communication
 
 Every message validated for:
 
@@ -284,16 +344,16 @@ Every message validated for:
 
 ---
 
-### 3.7 Traceability
+### 3.8 Traceability
 
 All messages must include:
 
 * `task_id`
-* optional `step_id`
+* `step_id`
 
 ---
 
-### 3.8 Anti-Patterns
+### 3.9 Anti-Patterns
 
 * direct agent-to-agent calls
 * unstructured communication
@@ -303,29 +363,41 @@ All messages must include:
 
 ## 4. Capability & Agent Registration (Handshake)
 
-### 4.1 Agent Manifest (required on attach)
+### 4.1 Agent Manifest (canonical, required on attach)
 
 ```json
 {
   "agent_id": "string",
   "version": "semver",
+  "base_url": "https://agent-host",
+  "transport": "http | grpc | local",
+  "protocol": "native | a2a | mcp",
+  "invoke": {
+    "timeout_ms": 15000,
+    "async_supported": true
+  },
   "capabilities": [
     {
       "name": "string",
+      "description": "what this capability does",
       "input_schema": { "...": "JSON Schema" },
       "output_schema": { "...": "JSON Schema" },
       "constraints": ["read_only | mutates_state | external_io"],
-      "timeouts_ms": 15000,
       "idempotent": true
     }
   ],
-  "health_endpoint": "string",
+  "health_endpoint": "/health",
   "auth": {
-    "type": "mTLS | token",
+    "type": "mTLS | token | oauth",
     "scopes": ["capability:invoke"]
   }
 }
 ```
+
+**Protocol values:**
+* `native` — GAIA's internal protocol (default).
+* `a2a` — Google Agent-to-Agent protocol. Manifest auto-derived from Agent Card.
+* `mcp` — Anthropic Model Context Protocol. Capabilities derived from MCP Tool definitions.
 
 ---
 
@@ -339,7 +411,18 @@ All messages must include:
 
 ---
 
-### 4.3 Capability Registry (authoritative)
+### 4.3 Disconnect / Graceful Detach
+
+1. **DRAIN** → agent signals intent to disconnect.
+2. **REASSIGN** → kernel reassigns any in-flight steps to fallback agents.
+3. **DEREGISTER** → remove agent from Capability Registry.
+4. **CLOSED** → agent is fully detached.
+
+If an agent disconnects without signaling (crash), the kernel detects via failed health checks and triggers **temporary eject** (see Section 10).
+
+---
+
+### 4.4 Capability Registry (authoritative)
 
 Maps capability → [agents]
 
@@ -379,14 +462,14 @@ Agents cannot address each other. All calls must be: `REQUEST(capability, input,
 
 ---
 
-## 6. Planning & Dispatching (UPDATED)
+## 6. Planning & Dispatching
 
-### 6.1 Capability-Level Planning
+### 6.1 Planner Inputs
 
 Each planning call includes:
 * **Goal**: The objective to decompose.
 * **Active State**: Latest snapshot + current delta.
-* **Capability Manifest**: Curated list of currently attached agents only.
+* **Capability Manifest**: Curated list of currently attached capabilities only.
 
 Planner operates on capability abstraction and never references agent IDs.
 
@@ -399,8 +482,18 @@ Planner generates **partial plans** (1–3 steps).
 ```json
 {
   "steps": [
-    { "capability": "read_pdf", "input": {...} },
-    { "capability": "summarize_text", "input": {...} }
+    {
+      "id": "step_1",
+      "capability": "read_pdf",
+      "input": { "url": "..." },
+      "depends_on": []
+    },
+    {
+      "id": "step_2",
+      "capability": "summarize_text",
+      "input": { "text": "{{step_1.output.text}}" },
+      "depends_on": ["step_1"]
+    }
   ],
   "has_more": false
 }
@@ -408,7 +501,49 @@ Planner generates **partial plans** (1–3 steps).
 
 ---
 
-### 6.3 Routing (Dispatcher logic)
+### 6.3 Parallel Execution (DAG)
+
+Steps declare dependencies via `depends_on`.
+
+* Steps with **no unmet dependencies** can run in parallel.
+* The Scheduler builds a DAG from `depends_on` and dispatches ready steps concurrently.
+* A step is "ready" when all entries in its `depends_on` list are `done`.
+
+Example (parallel):
+
+```json
+{
+  "steps": [
+    { "id": "a", "capability": "fetch_weather", "depends_on": [] },
+    { "id": "b", "capability": "fetch_traffic", "depends_on": [] },
+    { "id": "c", "capability": "plan_route", "depends_on": ["a", "b"] }
+  ]
+}
+```
+
+Steps `a` and `b` execute in parallel. Step `c` waits for both.
+
+---
+
+### 6.4 Data Flow Between Steps (Interpolation)
+
+Planner uses explicit `{{...}}` references to bind step outputs.
+
+#### Interpolation Sources (priority order)
+
+1. Previous step outputs (`{{step_id.output.field}}`)
+2. Active state (`{{state.field}}`)
+3. Constants (`{{const.field}}`)
+
+#### Rules
+
+* Only `done` steps can be referenced.
+* Invalid or circular references → plan rejection.
+* Interpolation is resolved by the Kernel **before** dispatching to the agent.
+
+---
+
+### 6.5 Routing (Dispatcher logic)
 
 For each step, select agent by:
 * capability match
@@ -420,264 +555,15 @@ For each step, select agent by:
 
 ---
 
-## 7. Internal Architecture
+## 7. Invocation Model
 
-```
-Orchestrator Kernel
-├── Goal Manager
-├── Planner Interface
-├── Scheduler
-├── Execution Engine
-├── State Store
-├── Policy Engine
-├── Capability Registry
-├── Request Router
-├── Event Bus
-└── Audit Log
-```
-
----
-
-## 8. Data Model
-
-### 8.1 Request (enforced)
-
-```json
-{
-  "type": "REQUEST",
-  "capability": "string",
-  "input": {...},
-  "task_id": "uuid",
-  "step_id": "uuid"
-}
-```
-
----
-
-### 8.2 Step
-
-```json
-{
-  "step_id": "uuid",
-  "capability": "string",
-  "input": {...},
-  "status": "pending | done | failed"
-}
-```
-
----
-
-### 8.3 Response (strict)
-
-```json
-{
-  "success": true,
-  "output": {...},
-  "error": null,
-  "metrics": {
-    "latency_ms": 1200
-  }
-}
-```
-
----
-
-## 9. Control Loop (with dynamic attachment)
-
-```
-on agent_connect(manifest):
-    validate → sandbox → register
-
-while task not complete:
-
-    if no pending steps:
-        plan = planner(goal, state, capabilities)
-
-    step = next_step(plan)
-
-    if violates_policy(step):
-        halt / require approval
-
-    agent = route(step.capability)
-    result = execute(agent, step.input)
-
-    if success:
-        validate_output()
-        update_state()
-    else:
-        classify_failure()
-        apply_enforcement() # quarantine if needed
-        retry / fallback / replan
-
-    continue
-```
-
----
-
-## 10. Isolation & “Ejection” (Dirty Agent Handling)
-
-### 10.1 Failure Taxonomy
-
-* **Soft failure**: timeout, transient error
-* **Hard failure**: schema violation, malformed output
-* **Policy violation**: unauthorized action attempt
-
----
-
-### 10.2 Enforcement Actions
-
-| Condition | Action |
-| :--- | :--- |
-| Repeated timeouts | degrade priority |
-| Schema violations | immediate quarantine |
-| Policy violation | blacklist |
-| Crash/health down | temporary eject |
-
----
-
-### 10.3 Quarantine / Blacklist Model
-
-```json
-{
-  "agent_id": "...",
-  "status": "active | degraded | quarantined | blacklisted",
-  "reason": "schema_violation",
-  "since": "timestamp"
-}
-```
-
----
-
-### 10.4 Health Monitoring
-
-* Periodic **health_endpoint** checks.
-* Rolling metrics: success rate, **p95 latency**, and error types.
-* Used as the primary signal for routing and dispatcher decisions.
-
----
-
-## 11. Security Model
-
-* **Identity**: per-agent credentials (mTLS or signed tokens)
-* **Scopes**: per-capability invocation rights
-* **Rate limits**: per-agent + per-capability
-* **Network policy**: sandboxed egress (deny by default)
-
----
-
-## 12. Non-Negotiables (for stability)
-
-* Capability-first (never agent-first) planning
-* Strict schema validation (in/out)
-* Centralized mediation (no bypass)
-* Tiered trust (active → degraded → quarantined → blacklisted)
-* Bounded planner context (manifest is curated)
-
-**Bottom line**: To make “plug-in agents” viable, the orchestrator must behave like a **capability router + policy firewall + execution kernel**. If the handshake is strict, validation is hard, and isolation is automatic, system integrity is maintained regardless of which agents attach.
-
----
-
-## 13. Design Constraints
-
-### Deterministic Execution
-
-* Same input → same result
-
----
-
-### LLM Isolation
-
-* LLM only plans/replans
-
----
-
-### Strict Schemas
-
-* Validate all inputs/outputs
-
----
-
-### Centralized Communication
-
-* All interactions mediated
-
----
-
-## 14. Conceptual Equivalents
-
-* OS kernel
-* Workflow engines (Temporal, Airflow)
-* Distributed control systems
-
----
-
-## 15. Validation Criteria
-
-System is correct if:
-
-* tasks can be paused/resumed
-* execution is replayable
-* messages are traceable
-* planner is replaceable
-
----
-
-## Summary
-
-You are building:
-
-> a deterministic orchestration kernel with a probabilistic planner, mediated communication, and bounded state
-
-System stability depends on:
-
-* strict contracts
-* centralized control
-* controlled planning
-* observable execution
-
----
-
-# Orchestrator Addendum: Execution Gaps + Local/Remote Strategy
-
-This document defines **missing connectors** required for implementation:
-
-* Invocation model
-* Data flow between steps
-* Async execution
-* Cancellation & interrupts
-* Client boundary
-* Local vs Remote execution strategy
-
----
-
-## 1. Invocation Model
-
-### 1.1 Agent Manifest (Updated)
-
-```json
-{
-  "agent_id": "string",
-  "base_url": "https://agent-host",
-  "transport": "http | grpc | local",
-  "invoke": {
-    "timeout_ms": 15000,
-    "async_supported": true
-  },
-  "capabilities": [...]
-}
-```
-
----
-
-### 1.2 Invocation Interface
-
-#### Unified call
+### 7.1 Unified Call
 
 ```text
 invoke(agent, payload)
 ```
 
-#### Payload
+### 7.2 Payload
 
 ```json
 {
@@ -691,87 +577,27 @@ invoke(agent, payload)
 
 ---
 
-### 1.3 Transport Resolution
+### 7.3 Transport Resolution
 
 ```text
 if agent.transport == "local":
     direct function / IPC call
 else:
-    HTTP/gRPC request
+    HTTP/gRPC request to agent.base_url
 ```
 
 ---
 
-## 2. Data Flow Between Steps
-
-### 2.1 Step Binding Syntax
-
-Planner uses explicit references:
-
-```json
-{
-  "steps": [
-    {
-      "id": "step_1",
-      "capability": "read_pdf",
-      "input": {"url": "..."}
-    },
-    {
-      "id": "step_2",
-      "capability": "summarize",
-      "input": {
-        "text": "{{step_1.output.text}}"
-      }
-    }
-  ]
-}
-```
-
----
-
-### 2.2 Interpolation Engine
-
-Before execution:
-
-* resolve `{{...}}`
-
-#### Sources
-
-1. previous step outputs
-2. active state
-3. constants
-
----
-
-### 2.3 Rules
-
-* Only completed steps can be referenced
-* Invalid references → plan rejection
-
----
-
-## 3. Async Execution Model
-
-### 3.1 Modes
+### 7.4 Async Execution
 
 | Mode  | Behavior                         |
 | ----- | -------------------------------- |
 | sync  | blocking response                |
 | async | immediate ACK + later completion |
 
----
+#### Async Flow
 
-### 3.2 Async Flow
-
-#### Invocation
-
-```json
-{
-  "mode": "async"
-}
-```
-
-#### Agent ACK
+Agent ACK:
 
 ```json
 {
@@ -780,7 +606,7 @@ Before execution:
 }
 ```
 
-#### Completion Event
+Completion (agent → Orchestrator):
 
 ```json
 {
@@ -791,29 +617,154 @@ Before execution:
 }
 ```
 
----
-
-### 3.3 Orchestrator Handling
+Orchestrator handling:
 
 * mark step `pending_async`
 * wait for completion event
-* enforce timeout
+* enforce timeout (from manifest `invoke.timeout_ms`)
 
 ---
 
-## 4. Cancellation & Interrupts
+## 8. Retry & Failure Policy
 
-### 4.1 Task State
+### 8.1 Retry Configuration (per-step)
 
 ```json
 {
-  "status": "running | cancelled | failed | completed"
+  "retry": {
+    "max_attempts": 3,
+    "backoff": "exponential",
+    "base_delay_ms": 500,
+    "max_delay_ms": 10000
+  }
 }
 ```
 
 ---
 
-### 4.2 Interrupt Event
+### 8.2 Retry Rules
+
+* Only retryable errors (where `error.retryable == true`) trigger retries.
+* Idempotent capabilities (from manifest) are always safe to retry.
+* Non-idempotent capabilities with `mutates_state` constraint require explicit retry policy; default is **no retry**.
+
+---
+
+### 8.3 Escalation Path
+
+```text
+retry (up to max_attempts)
+  → fallback agent (if available)
+    → replan (invoke planner with failure context)
+      → abort task
+```
+
+---
+
+## 9. Data Model
+
+### 9.1 Task
+
+```json
+{
+  "task_id": "uuid",
+  "goal": {...},
+  "status": "pending | planning | executing | completed | failed | cancelled",
+  "plan": [...],
+  "current_step": 2,
+  "created_at": "timestamp",
+  "updated_at": "timestamp"
+}
+```
+
+---
+
+### 9.2 Step
+
+```json
+{
+  "step_id": "uuid",
+  "capability": "string",
+  "input": {...},
+  "depends_on": ["step_id", ...],
+  "status": "pending | running | pending_async | done | failed",
+  "output": {...},
+  "error": null,
+  "assigned_agent": "agent_id",
+  "retry_count": 0
+}
+```
+
+---
+
+### 9.3 Agent Record
+
+```json
+{
+  "agent_id": "...",
+  "status": "active | degraded | quarantined | blacklisted",
+  "trust_score": 0.95,
+  "registered_at": "timestamp",
+  "last_health_check": "timestamp",
+  "rolling_metrics": {
+    "success_rate": 0.98,
+    "p95_latency_ms": 450,
+    "error_counts": { "TIMEOUT": 2, "SCHEMA_VIOLATION": 0 }
+  }
+}
+```
+
+---
+
+## 10. Isolation & "Ejection" (Dirty Agent Handling)
+
+### 10.1 Failure Taxonomy
+
+* **Soft failure**: timeout, transient error
+* **Hard failure**: schema violation, malformed output
+* **Policy violation**: unauthorized action attempt
+
+---
+
+### 10.2 Enforcement Actions
+
+| Condition          | Action               |
+| :----------------- | :------------------- |
+| Repeated timeouts  | degrade priority     |
+| Schema violations  | immediate quarantine |
+| Policy violation   | blacklist            |
+| Crash/health down  | temporary eject      |
+
+---
+
+### 10.3 Quarantine / Blacklist Model
+
+* **quarantined**: not used for routing, still observable for debugging.
+* **blacklisted**: fully blocked from the kernel.
+
+---
+
+### 10.4 Health Monitoring
+
+* Periodic **health_endpoint** checks.
+* Rolling metrics: success rate, **p95 latency**, and error types.
+* Used as the primary signal for routing and dispatcher decisions.
+
+---
+
+## 11. Cancellation & Interrupts
+
+### 11.1 Task States
+
+```json
+{
+  "status": "pending | planning | executing | completed | failed | cancelled"
+}
+```
+
+---
+
+### 11.2 Interrupt Event
 
 ```json
 {
@@ -825,16 +776,17 @@ Before execution:
 
 ---
 
-### 4.3 Control Loop Rule
+### 11.3 Control Loop Cancellation
 
 ```text
 if task.status == "cancelled":
+    send CANCEL to in-flight agents (best-effort)
     abort execution
 ```
 
 ---
 
-### 4.4 Agent Cancellation (Optional)
+### 11.4 Agent Cancellation (best-effort)
 
 ```json
 {
@@ -844,11 +796,56 @@ if task.status == "cancelled":
 }
 ```
 
+Agent may ignore this. Kernel does not wait for confirmation.
+
 ---
 
-## 5. Client Interface
+## 12. Planner Failure Handling
 
-### 5.1 Submit Goal
+### 12.1 Failure Modes
+
+* **LLM timeout / rate limit**: transient, retryable.
+* **Malformed output**: planner returns non-JSON or invalid plan schema.
+* **Empty plan**: planner returns zero steps.
+* **Hallucinated capability**: planner references a capability not in the manifest.
+
+---
+
+### 12.2 Recovery Strategy
+
+```text
+planner_result = planner(goal, state, capabilities)
+
+if timeout or rate_limit:
+    retry with backoff (max 3 attempts)
+
+if malformed output:
+    retry once with stricter prompt
+
+if empty plan:
+    emit TASK_FAILED("planner returned empty plan")
+
+if unknown capability referenced:
+    reject plan, retry with filtered manifest
+
+if all retries exhausted:
+    emit TASK_FAILED("planner unavailable")
+```
+
+---
+
+## 13. Security Model
+
+* **Identity**: per-agent credentials (mTLS or signed tokens)
+* **Scopes**: per-capability invocation rights
+* **Rate limits**: per-agent + per-capability
+* **Network policy**: sandboxed egress (deny by default)
+
+---
+
+## 14. Client Interface
+
+### 14.1 Submit Goal
 
 ```http
 POST /tasks
@@ -862,7 +859,7 @@ POST /tasks
 
 ---
 
-### 5.2 Get Status
+### 14.2 Get Status
 
 ```http
 GET /tasks/{task_id}
@@ -870,7 +867,7 @@ GET /tasks/{task_id}
 
 ---
 
-### 5.3 Cancel Task
+### 14.3 Cancel Task
 
 ```http
 POST /tasks/{task_id}/cancel
@@ -878,15 +875,15 @@ POST /tasks/{task_id}/cancel
 
 ---
 
-### 5.4 Optional Streaming
+### 14.4 Streaming
 
-* WebSocket / SSE for real-time updates
+* WebSocket / SSE for real-time task events (subscribes to Event Bus).
 
 ---
 
-## 6. Local vs Remote Execution
+## 15. Local vs Remote Execution
 
-### 6.1 Agent Classification
+### 15.1 Agent Classification
 
 ```json
 {
@@ -900,7 +897,7 @@ POST /tasks/{task_id}/cancel
 
 ---
 
-### 6.2 Routing Strategy
+### 15.2 Routing Strategy
 
 #### Prefer Local Agents When:
 
@@ -916,21 +913,7 @@ POST /tasks/{task_id}/cancel
 
 ---
 
-### 6.3 Dispatcher Logic
-
-```text
-select_agent(capability):
-    if low_latency_required:
-        choose local
-    else if heavy_task:
-        choose remote
-    else:
-        choose best available (latency + health)
-```
-
----
-
-### 6.4 Transport Abstraction
+### 15.3 Transport Abstraction
 
 Execution must be uniform:
 
@@ -944,7 +927,7 @@ invoke(agent, payload):
 
 ---
 
-### 6.5 Failure Characteristics
+### 15.4 Failure Characteristics
 
 | Type               | Local   | Remote   |
 | ------------------ | ------- | -------- |
@@ -955,7 +938,7 @@ invoke(agent, payload):
 
 ---
 
-### 6.6 Hybrid Model
+### 15.5 Hybrid Model
 
 ```text
 Orchestrator
@@ -965,47 +948,291 @@ Orchestrator
 
 ---
 
-## 7. Integrated Control Loop
+## 16. Authoritative Control Loop
+
+This is the **single, canonical** execution loop for the kernel.
 
 ```text
+on agent_connect(manifest):
+    validate → sandbox → register
+
+on agent_disconnect(agent_id):
+    drain → reassign in-flight → deregister
+
 while task not complete:
 
     if task.status == "cancelled":
-        abort
+        cancel in-flight agents (best-effort)
         break
 
     if no pending steps:
-        plan = planner(...)
+        plan = planner(goal, state, capabilities)
 
-    step = next_step(plan)
+        if planner fails:
+            apply planner recovery (Section 12)
+            if unrecoverable: fail task, break
 
-    resolve_input(step)
+    ready_steps = get_ready_steps(plan)  # steps with all depends_on met
 
-    agent = route(step.capability)
+    for each step in ready_steps (parallel):
 
-    result = invoke(agent, step)
+        resolve_input(step)              # interpolate {{...}} references
 
-    if async:
-        wait_for_event()
-    else:
-        process_result()
+        if violates_policy(step):
+            halt / require approval
 
-    if failure:
-        retry / fallback / replan
+        agent = route(step.capability)   # select by health, SLA, trust
+        result = invoke(agent, step)
+
+        if mode == async:
+            mark step pending_async
+            continue                     # proceed to next ready step
+
+        if success:
+            validate_output(result)      # check against output_schema
+            update_state(result)
+            emit_event("STEP_COMPLETED")
+        else:
+            classify_failure(result.error)
+            apply_enforcement(agent)     # degrade / quarantine / blacklist
+            apply_retry_policy(step)     # retry → fallback → replan → abort
+
+    await any pending_async completions
+
+    continue
 ```
+
+---
+
+## 17. Internal Architecture
+
+```
+Orchestrator Kernel
+├── Goal Manager
+├── Planner Interface
+├── Scheduler (DAG resolver)
+├── Interpolation Engine
+├── Execution Engine
+├── Transport Layer (local / HTTP / gRPC)
+├── State Store (tiered)
+├── Policy Engine
+├── Capability Registry
+├── Request Router
+├── Event Bus
+├── Retry Manager
+└── Audit Log
+```
+
+---
+
+## 18. Design Constraints
+
+### Deterministic Kernel Execution
+
+* Given the same plan and the same agent responses, the kernel produces the same state transitions.
+* **Note**: Agent *routing* is non-deterministic (depends on health, latency). The kernel's *processing* of results is deterministic.
+
+---
+
+### LLM Isolation
+
+* LLM only plans/replans
+* Never executes actions
+* Never receives raw agent outputs
+
+---
+
+### Strict Schemas
+
+* Validate all inputs/outputs against JSON Schema
+
+---
+
+### Centralized Communication
+
+* All interactions mediated
+* No bypass paths
+
+---
+
+## 19. Non-Negotiables (for stability)
+
+* Capability-first (never agent-first) planning
+* Strict schema validation (in/out)
+* Centralized mediation (no bypass)
+* Tiered trust (active → degraded → quarantined → blacklisted)
+* Bounded planner context (manifest is curated)
+
+**Bottom line**: To make "plug-in agents" viable, the orchestrator must behave like a **capability router + policy firewall + execution kernel**. If the handshake is strict, validation is hard, and isolation is automatic, system integrity is maintained regardless of which agents attach.
+
+---
+
+## 20. Validation Criteria
+
+System is correct if:
+
+* tasks can be paused/resumed
+* execution is replayable (given same plan + agent responses)
+* every message is traceable
+* planner is replaceable
+* agents can crash without corrupting kernel state
+* cancelled tasks release all resources
+
+---
+
+## 21. Protocol Interoperability (A2A + MCP)
+
+GAIA does not replace A2A or MCP. It **consumes** them. Any A2A-compatible agent or MCP-compatible tool can attach to GAIA through protocol adapters in the Transport Layer.
+
+---
+
+### 21.1 Protocol Positioning
+
+```
+┌─────────────────────────────────────────────┐
+│              GAIA Kernel                    │
+│  (orchestration, planning, trust, state)    │
+├─────────────┬───────────────┬───────────────┤
+│  A2A        │  MCP          │  Native       │
+│  Adapter    │  Adapter      │  Protocol     │
+├─────────────┼───────────────┼───────────────┤
+│  Remote     │  Tool         │  Local/Remote │
+│  Agents     │  Servers      │  Agents       │
+└─────────────┴───────────────┴───────────────┘
+```
+
+* **A2A** = agent-to-agent communication (horizontal). GAIA uses it to delegate tasks to remote agents.
+* **MCP** = agent-to-tool connectivity (vertical). GAIA uses it to access external tools/data sources.
+* **Native** = GAIA's own protocol for agents built specifically for this kernel.
+
+---
+
+### 21.2 A2A Integration (Google Agent-to-Agent Protocol)
+
+#### What A2A provides
+
+* **Agent Card** (`/.well-known/agent.json`): Discovery metadata — name, skills, auth, supported modalities.
+* **Task lifecycle**: `submitted` → `working` → `input-required` → `completed` / `failed`.
+* **Artifacts**: Structured outputs (text, files, data) produced by agents.
+* **Transport**: JSON-RPC 2.0 over HTTPS. Streaming via SSE.
+
+#### How GAIA consumes A2A
+
+1. **Discovery**: GAIA fetches `/.well-known/agent.json` from the remote agent's URL.
+2. **Manifest Translation**: The A2A Adapter converts the Agent Card into a GAIA Agent Manifest:
+
+```text
+A2A Agent Card              →  GAIA Manifest
+─────────────────────────────────────────────
+name + description          →  agent_id
+skills[].id                 →  capabilities[].name
+skills[].description        →  capabilities[].description
+skills[].inputModes         →  capabilities[].input_schema
+skills[].outputModes        →  capabilities[].output_schema
+authentication              →  auth
+url                         →  base_url
+```
+
+3. **Invocation**: When dispatching to an A2A agent, GAIA sends `message/send` (sync) or `message/stream` (async) via JSON-RPC.
+4. **Task Mapping**:
+
+| GAIA Step Status   | A2A Task Status  |
+| :----------------- | :--------------- |
+| pending            | submitted        |
+| running            | working          |
+| pending_async      | working          |
+| done               | completed        |
+| failed             | failed           |
+
+5. **Output**: A2A Artifacts are converted to GAIA step outputs. Parts (TextPart, FilePart, DataPart) are normalized into the step's `output` JSON.
+
+---
+
+### 21.3 MCP Integration (Anthropic Model Context Protocol)
+
+#### What MCP provides
+
+* **Tools**: Functions that an AI model can invoke (with JSON Schema for inputs/outputs).
+* **Resources**: Contextual data (files, database rows) exposed to the model.
+* **Prompts**: Templated messages and workflows.
+* **Transport**: JSON-RPC 2.0 over stdio or HTTP+SSE. Stateful connections.
+
+#### How GAIA consumes MCP
+
+1. **Connection**: GAIA connects to MCP Servers as an MCP Client.
+2. **Tool Discovery**: GAIA calls `tools/list` to discover available tools.
+3. **Manifest Translation**: Each MCP Tool becomes a GAIA capability:
+
+```text
+MCP Tool                    →  GAIA Capability
+─────────────────────────────────────────────
+tool.name                   →  capability.name
+tool.description            →  capability.description
+tool.inputSchema            →  capability.input_schema
+(inferred)                  →  capability.output_schema
+tool.annotations.readOnly   →  constraint: read_only
+tool.annotations.destructive→  constraint: mutates_state
+```
+
+4. **Invocation**: When dispatching to an MCP tool, GAIA sends `tools/call` via JSON-RPC.
+5. **Output**: MCP tool results (content array with text/image/resource types) are normalized into GAIA step output JSON.
+6. **Resources**: MCP Resources can be injected into step inputs via the Interpolation Engine using `{{mcp.resource_uri}}`.
+
+---
+
+### 21.4 Adapter Architecture
+
+Adapters are internal Kernel components. They sit in the Transport Layer.
+
+```
+Execution Engine
+    │
+    ├── invoke(agent, payload)
+    │
+    └── Transport Layer
+            ├── NativeAdapter   → direct call / IPC / HTTP
+            ├── A2AAdapter      → JSON-RPC (message/send, tasks/get)
+            └── MCPAdapter      → JSON-RPC (tools/call, resources/read)
+```
+
+#### Adapter responsibilities
+
+* **Translate** GAIA payloads into protocol-specific wire formats.
+* **Normalize** protocol-specific responses into GAIA's Response schema.
+* **Handle** protocol-specific auth (OAuth for A2A, stdio/token for MCP).
+* **Map** protocol-specific errors to GAIA's Error schema.
+
+---
+
+### 21.5 Registration Flow (per protocol)
+
+| Protocol | Discovery                          | Registration                          |
+| :------- | :--------------------------------- | :------------------------------------ |
+| Native   | Agent submits manifest directly    | Standard handshake (Section 4.2)      |
+| A2A      | Fetch `/.well-known/agent.json`    | Auto-translate Agent Card → manifest  |
+| MCP      | Connect + call `tools/list`        | Auto-translate Tools → capabilities   |
+
+All protocols converge into the same **Capability Registry**. The Planner never knows which protocol an agent uses.
+
+---
+
+### 21.6 What GAIA adds on top of A2A + MCP
+
+Neither A2A nor MCP provides:
+
+* **Autonomous planning**: Neither protocol has a planner. GAIA decomposes goals into steps automatically.
+* **Trust & isolation**: A2A assumes agents are trusted peers. GAIA enforces tiered trust (active → quarantined → blacklisted).
+* **Cross-protocol orchestration**: A2A agents and MCP tools can be used in the same plan, in the same task, seamlessly.
+* **Centralized mediation**: A2A allows peer-to-peer. GAIA forbids it — all traffic is mediated.
+* **State management**: Neither protocol manages global task state. GAIA provides tiered state with snapshotting.
 
 ---
 
 ## Summary
 
-This addendum defines:
+You are building:
 
-* explicit invocation contract
-* deterministic data flow between steps
-* async execution model
-* cancellation mechanism
-* client interface boundary
-* hybrid local/remote execution strategy
+> a deterministic orchestration kernel with a probabilistic planner, mediated communication, and bounded state — compatible with the A2A and MCP ecosystems
 
 System is now:
 
@@ -1013,3 +1240,11 @@ System is now:
 * transport-agnostic
 * scalable
 * interruption-safe
+* interoperable with industry-standard agent protocols
+
+System stability depends on:
+
+* strict contracts
+* centralized control
+* controlled planning
+* observable execution
