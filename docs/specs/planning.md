@@ -1,94 +1,139 @@
 # Planning & Interpolation Specification
 
-> **Status**: 🔲 Not Started
+> **Status**: 🟢 Complete
 >
-> **Source**: [design.md — Sections 6, 12](../design.md)
+> **Source**: [design.md — Sections 6, 12, 16](../design.md)
 
 ---
 
 ## Purpose
 
-This document specifies the **Planner Interface** and the **Interpolation Engine** — how goals become plans, how plans become executable steps, and how data flows between steps via `{{...}}` references.
+This document specifies the **Planner Interface** and the **Interpolation Engine** — the kernel components responsible for decomposing high-level goals into executable units of work and managing the data flow between them. 
+
+The GAIA kernel treats the Planner as a pluggable, isolated module that operates on capability abstractions rather than direct agent invocations.
 
 ---
 
-## Sections to Define
+## 1. Planner Interface Contract
 
-### 1. Planner Interface Contract
+The Planner is invoked by the Control Loop during Phase 2 (Planning) or Phase 10.2 (Incremental Planning).
 
-* Input: goal + active state + capability manifest
-* Output: partial plan (1–3 steps) with `has_more` flag
-* Output schema validation
-* Planner is a pluggable component (LLM, rules-based, hybrid)
+### 1.1 Input Assembly (The "Context Window")
 
----
+Every planning call MUST receive the following structured context (design.md Section 6.1):
 
-### 2. Incremental Planning
+| Component | Source | Description |
+| :--- | :--- | :--- |
+| **Goal** | `task.goal` | The immutable user objective. |
+| **Active State** | State Store (Tier 1) | The current accumulated results and context. |
+| **Capability Manifest** | Registry | A strictly filtered list of names, descriptions, and input/output schemas for currently `active` capabilities. |
+| **Failure Context** | Control Loop | (Optional) The error and step trace that triggered a replan. |
 
-* Why partial plans? (bounded context, adaptability)
-* When does the kernel re-invoke the planner?
-* How does `has_more` affect the control loop?
+### 1.2 Output Specification (PlanRecord)
 
----
-
-### 3. Capability Manifest Curation
-
-* What goes into the manifest sent to the planner?
-* How are unhealthy/quarantined agents filtered?
-* Format of the capability list (names + descriptions + schemas)
+The Planner must return a `PlanRecord` (schemas.md Section 11) conforming to:
+* **Steps**: A list of 1–3 `Step` objects.
+* **has_more**: Boolean indicating if the goal requires further decomposition after these steps.
+* **Metadata**: Generation counter for tracking replan iterations.
 
 ---
 
-### 4. Interpolation Engine
+## 2. Incremental Planning (design.md Section 6.2)
 
-* `{{step_id.output.field}}` — step output references
-* `{{state.field}}` — active state references
-* `{{const.field}}` — constant references
-* Resolution priority order
-* Nested field access (dot notation)
+GAIA enforces **Incremental Planning** to ensure bounded context and system adaptability.
 
----
+### 2.1 The "1-3 Step" Rule
+The Planner is encouraged to generate small plan segments. This prevents:
+1. **Context Drift**: Long plans becoming irrelevant as world state changes.
+2. **Hallucination**: LLMs losing coherence in deep dependency chains.
+3. **Latency**: Faster response times for the first executable steps.
 
-### 5. Interpolation Validation
-
-* Only `done` steps can be referenced
-* Circular dependency detection
-* Missing reference → plan rejection
-* Type checking (does the resolved value match the input schema?)
+### 2.2 Re-invocation Triggers
+The kernel re-invokes the planner when:
+1. All steps in the current plan are `done` AND `has_more == true`.
+2. A step failure triggers the `replan` tier of the escalation path (failure-handling.md Section 4).
 
 ---
 
-### 6. Planner Failure Handling
+## 3. Interpolation Engine (design.md Section 6.4)
 
-* LLM timeout / rate limit → retry with backoff
-* Malformed output → retry once with stricter prompt
-* Empty plan → TASK_FAILED
-* Hallucinated capability → reject plan, retry with filtered manifest
-* All retries exhausted → TASK_FAILED
+The Interpolation Engine is responsible for binding data between steps using the `{{...}}` syntax.
+
+### 3.1 Syntax and Sources
+Interpolation is resolved by the Kernel **before** dispatching a step to an agent.
+
+| Pattern | Source | Priority |
+| :--- | :--- | :--- |
+| `{{step_id.output.field}}` | Output of a previously completed step | 1 |
+| `{{state.field}}` | Current value in the Kernel's Active State | 2 |
+| `{{const.field}}` | Task metadata/constants | 3 |
+
+### 3.2 Resolution Algorithm
+1. **Scan**: Identify all `{{...}}` markers in the `step.input` object.
+2. **Lookup**: Resolve the reference against the source priority list.
+3. **Cast**: Ensure the resolved value matches the type expected by the capability's `input_schema`.
+4. **Replace**: Swap the marker for the concrete value.
+
+### 3.3 Validation Rules
+* **Done-Only**: A reference to a `step_id` is only valid if that step's status is `done`.
+* **DAG Integrity**: References must follow the dependency graph (`depends_on`).
+* **Unresolvable**: Any reference that cannot be resolved results in a `PLAN_REJECTED` event or a step `failed` status with `EXECUTION_FAILED`.
 
 ---
 
-### 7. Planner Replanning
+## 4. Circular Dependency Detection
 
-* When does replanning trigger? (step failure after retry exhaustion)
-* What context does the planner receive on replan?
-* How does the kernel prevent infinite replan loops?
+The kernel validates every plan to ensure it is a Directed Acyclic Graph (DAG).
+
+1. **Build Adjacency List**: Map every step to its `depends_on` list.
+2. **Cycle Check**: Perform a Depth-First Search (DFS) for back-edges.
+3. **Interpolation Check**: Ensure every `{{step_id...}}` reference has a matching `depends_on` entry.
+4. **Rejection**: If a cycle or dangling reference is found, emit `PLAN_REJECTED` and trigger Planner Failure Recovery.
+
+---
+
+## 5. Planner Failure Recovery (design.md Section 12)
+
+The kernel implements a specialized circuit breaker for the Planner to handle non-deterministic LLM behavior.
+
+| Failure Mode | Kernel Behavior | Recovery Strategy |
+| :--- | :--- | :--- |
+| **Timeout/Rate Limit** | Soft Failure | Retry with exponential backoff (max 3). |
+| **Malformed Output** | Hard Failure | Retry once with "Correction Prompt" (force JSON). |
+| **Hallucination** | Contextual Failure | Identify unknown capability; retry with manifest filtered to ONLY valid tools. |
+| **Empty Plan** | Logical Failure | Terminate task. Emit `TASK_FAILED`. |
+
+---
+
+## 6. Replanning Logic
+
+Replanning is an escalation tier used when execution hits a roadblock.
+
+### 6.1 Failure Context Injection
+When replanning, the Planner receives the "Failure Context":
+* The step that failed.
+* The error code (e.g., `CAPABILITY_NOT_FOUND`).
+* The partial results of other successful steps.
+
+### 6.2 Replanning Circuit Breaker
+To prevent infinite "I will try again" loops:
+* **Max Replans**: 2 per task.
+* **Pruning**: The Planner is instructed that the failed capability is unavailable for this task iteration.
 
 ---
 
 ## Related Documents
 
-* [Data Model & Schemas](schemas.md) — Step schema with `depends_on` and interpolation
-* [Control Loop Spec](control-loop.md) — how planning integrates into the loop
-* [State Management Spec](state-management.md) — planner input assembly
-* [Registry Spec](registry.md) — capability manifest curation
-* [Failure Handling Spec](failure-handling.md) — replan triggers
+* [Data Model & Schemas](schemas.md) — PlanRecord and Step schema definitions.
+* [Control Loop Spec](control-loop.md) — The exact phases where planning and interpolation occur.
+* [Failure Handling Spec](failure-handling.md) — Detailed escalation path (retry → fallback → replan).
+* [Registry Spec](registry.md) — How the Capability Manifest is curated and filtered.
 
 ---
 
 ## TODO
 
-- [ ] Define planner input/output schemas formally
-- [ ] Specify interpolation engine algorithm
-- [ ] Document circular dependency detection
-- [ ] Define replan loop limit and circuit breaker
+- [x] Define planner input/output schemas formally.
+- [x] Specify interpolation engine algorithm and priority.
+- [x] Document circular dependency and interpolation validation.
+- [x] Define replan loop limit and circuit breaker logic.
