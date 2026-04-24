@@ -12,6 +12,15 @@ This document specifies the **Capability Registry** — the authoritative direct
 
 ---
 
+## Routing Constraints
+
+1. **Capability Primacy**: The registry maps to capabilities, not agents. Agents are transient; capabilities are persistent.
+2. **Health-Weighted Selection**: The dispatcher must prioritize agents with a trust score > 0.9 and latency within the 95th percentile of the capability average.
+3. **Fallback Determinism**: The fallback chain must be pre-calculated or deterministic to prevent infinite "hunting" for agents.
+4. **Handshake Integrity**: No agent shall be registered without a valid health endpoint and verified mTLS/OAuth credentials.
+
+---
+
 ## Sections to Define
 
 ### 1. Registry Data Model

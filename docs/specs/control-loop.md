@@ -12,6 +12,15 @@ This document provides a **detailed, implementation-ready specification** of the
 
 ---
 
+## Kernel Invariants
+
+1. **Progress Guarantee**: The loop must either make progress (complete a step) or transition to a terminal failure/replan state. Infinite loops are forbidden.
+2. **State Consistency**: No state update shall occur without a corresponding audit log entry.
+3. **Atomic Transitions**: Task and Step status changes must be atomic; partial or "in-between" states shall not be exposed to the Event Bus.
+4. **Deny-by-Default**: No step shall be dispatched without passing the Policy Engine validation phase.
+
+---
+
 ## Sections to Define
 
 ### 1. Loop Entry Conditions

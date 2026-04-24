@@ -12,6 +12,15 @@ This document specifies the **Policy Engine** (the "Firewall") and the **Securit
 
 ---
 
+## Enforcement Principles
+
+1. **Isolation First**: No agent shall have network or filesystem access beyond what is explicitly granted in its sandbox profile.
+2. **Mediation Mandate**: All inter-agent data flow must pass through the kernel. Direct memory sharing or IPC between agents is a protocol violation.
+3. **Schema Enforcement**: Every byte of input and output must be validated. Non-compliant agents are immediately transitioned to the `quarantined` state.
+4. **Least Privilege**: Capabilities are granted with the minimum necessary scope (e.g., `read_only` by default).
+
+---
+
 ## Sections to Define
 
 ### 1. Identity & Authentication
