@@ -63,12 +63,10 @@ The **Agent Manifest** is the "Digital Identity" submitted by every agent during
     },
     "endpoint": {
       "type": "string",
-      "format": "uri",
       "description": "The base URL, pipe address, or WebSocket URI for the agent"
     },
     "health_endpoint": {
       "type": "string",
-      "format": "uri",
       "description": "Endpoint for heartbeat and health checks"
     },
     "invoke": {
@@ -133,7 +131,7 @@ The **Agent Manifest** is the "Digital Identity" submitted by every agent during
       "properties": {
         "name": {
           "type": "string",
-          "pattern": "^[a-z0-9_]+$",
+          "pattern": "^[a-z0-9_.-]+$",
           "description": "Machine-readable capability identifier"
         },
         "description": {
@@ -141,11 +139,11 @@ The **Agent Manifest** is the "Digital Identity" submitted by every agent during
           "description": "Human-readable description of what this capability does"
         },
         "input_schema": {
-          "type": "object",
+          "$ref": "https://json-schema.org/draft/2020-12/schema",
           "description": "JSON Schema defining the expected input structure"
         },
         "output_schema": {
-          "type": "object",
+          "$ref": "https://json-schema.org/draft/2020-12/schema",
           "description": "JSON Schema defining the guaranteed output structure"
         },
         "idempotent": {
@@ -249,8 +247,7 @@ An individual unit of work within a plan (design.md Section 9.2).
       "description": "The capability required for this step (must exist in the Capability Registry)"
     },
     "input": {
-      "type": "object",
-      "description": "The input data, potentially containing interpolation references (e.g., {{step_1.output.url}})"
+      "description": "The input data (any JSON value), potentially containing interpolation references (e.g., {{step_1.output.url}})"
     },
     "depends_on": {
       "type": "array",
@@ -266,7 +263,7 @@ An individual unit of work within a plan (design.md Section 9.2).
       "type": "string",
       "description": "The agent_id selected by the Capability Registry for this step"
     },
-    "output": { "type": "object" },
+    "output": { "description": "The output data (any JSON value) returned by the agent" },
     "error": { "$ref": "https://gaia-kernel.org/schemas/error.json" },
     "retry_count": { "type": "integer", "default": 0 }
   },
@@ -301,7 +298,7 @@ The message sent from the Kernel to an Agent to trigger a capability invocation 
     "task_id": { "type": "string", "format": "uuid" },
     "step_id": { "type": "string" },
     "capability": { "type": "string" },
-    "input": { "type": "object" },
+    "input": { "description": "The fully resolved input data (any JSON value)" },
     "mode": {
       "type": "string",
       "enum": ["sync", "async"],
@@ -335,7 +332,6 @@ The standardized output returned by an Agent after processing a Request (design.
     "request_id": { "type": "string", "format": "uuid" },
     "success": { "type": "boolean" },
     "output": {
-      "type": "object",
       "description": "Must conform to the output_schema defined in the agent's manifest for this capability"
     },
     "error": { "$ref": "https://gaia-kernel.org/schemas/error.json" },
@@ -352,7 +348,13 @@ The standardized output returned by an Agent after processing a Request (design.
       }
     }
   },
-  "required": ["request_id", "success"]
+  "allOf": [
+    {
+      "if": { "properties": { "success": { "const": true } } },
+      "then": { "required": ["request_id", "success", "output"] },
+      "else": { "required": ["request_id", "success", "error"] }
+    }
+  ]
 }
 ```
 
@@ -505,7 +507,7 @@ The Kernel's internal record for a registered agent (design.md Section 9.3). Thi
         "error_counts": {
           "type": "object",
           "additionalProperties": { "type": "integer" },
-          "description": "Error counts keyed by error code (e.g., {'TIMEOUT': 2, 'SCHEMA_VIOLATION': 0})"
+          "description": "Error counts keyed by error code (e.g., {\"TIMEOUT\": 2, \"SCHEMA_VIOLATION\": 0})"
         }
       }
     }
