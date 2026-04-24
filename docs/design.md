@@ -325,6 +325,7 @@ Orchestrator Kernel
 | TASK_FAILED        | unrecoverable failure                       |
 | TASK_CANCELLED     | user or system cancelled                    |
 | STEP_STARTED       | step dispatched to agent                    |
+| STEP_APPROVAL_REQUIRED| step halted pending human approval          |
 | STEP_COMPLETED     | step finished successfully                  |
 | STEP_FAILED        | step failed after exhausting retries        |
 | PLAN_GENERATED     | planner produced new/updated steps          |

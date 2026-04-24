@@ -433,6 +433,7 @@ Asynchronous event emitted by the Kernel via the Event Bus (design.md Sections 3
         "TASK_FAILED",
         "TASK_CANCELLED",
         "STEP_STARTED",
+        "STEP_APPROVAL_REQUIRED",
         "STEP_COMPLETED",
         "STEP_FAILED",
         "PLAN_GENERATED",
