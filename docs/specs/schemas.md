@@ -124,6 +124,26 @@ The **Agent Manifest** is the "Digital Identity" submitted by every agent during
     "invoke",
     "capabilities"
   ],
+  "allOf": [
+    {
+      "if": { "properties": { "transport": { "enum": ["http", "grpc", "websocket"] } } },
+      "then": {
+        "properties": {
+          "endpoint": { "format": "uri" },
+          "health_endpoint": { "format": "uri" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "transport": { "const": "ipc" } } },
+      "then": {
+        "properties": {
+          "endpoint": { "pattern": "^(unix://|\\\\\\\\\\.\\\\pipe\\\\).*$" },
+          "health_endpoint": { "pattern": "^(unix://|\\\\\\\\\\.\\\\pipe\\\\).*$" }
+        }
+      }
+    }
+  ],
   "$defs": {
     "capability": {
       "type": "object",
@@ -175,6 +195,48 @@ The **Agent Manifest** is the "Digital Identity" submitted by every agent during
       },
       "required": ["name", "description", "input_schema", "output_schema"]
     }
+  }
+}
+```
+
+### Example (JSON)
+
+```json
+{
+  "agent_id": "com.example.search",
+  "version": "1.0.0",
+  "transport": "http",
+  "protocol": "a2a",
+  "endpoint": "https://api.example.com/search",
+  "health_endpoint": "https://api.example.com/health",
+  "invoke": {
+    "timeout_ms": 10000,
+    "async_supported": true
+  },
+  "capabilities": [
+    {
+      "name": "web-search",
+      "description": "Searches the web for a given query",
+      "input_schema": {
+        "type": "object",
+        "properties": { "query": { "type": "string" } },
+        "required": ["query"]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": { "results": { "type": "array", "items": { "type": "string" } } }
+      },
+      "idempotent": true,
+      "constraints": {
+        "read_only": true,
+        "mutates_state": false,
+        "requires_approval": false
+      }
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "scopes": ["capability:invoke"]
   }
 }
 ```
@@ -314,6 +376,24 @@ The message sent from the Kernel to an Agent to trigger a capability invocation 
 }
 ```
 
+### Example (JSON)
+
+```json
+{
+  "type": "REQUEST",
+  "request_id": "123e4567-e89b-12d3-a456-426614174000",
+  "from": "kernel",
+  "task_id": "987fcdeb-51a2-43d7-9012-3456789abcde",
+  "step_id": "step_1",
+  "capability": "web-search",
+  "input": {
+    "query": "latest gaia orchestration features"
+  },
+  "mode": "async",
+  "timeout_ms": 15000
+}
+```
+
 ---
 
 ## 5. Response
@@ -355,6 +435,35 @@ The standardized output returned by an Agent after processing a Request (design.
       "else": { "required": ["request_id", "success", "error"] }
     }
   ]
+}
+```
+
+### Example (Sync Success)
+
+```json
+{
+  "request_id": "123e4567-e89b-12d3-a456-426614174000",
+  "success": true,
+  "output": {
+    "results": ["https://gaia-kernel.org/docs"]
+  },
+  "metrics": {
+    "duration_ms": 350,
+    "tokens_used": 120
+  }
+}
+```
+
+### Example (Async ACK with job_id)
+
+```json
+{
+  "request_id": "123e4567-e89b-12d3-a456-426614174000",
+  "success": true,
+  "job_id": "job_0987654321",
+  "output": {
+    "status": "processing_started"
+  }
 }
 ```
 
