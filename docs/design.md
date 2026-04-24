@@ -257,9 +257,10 @@ When `success` is false, the `error` field must contain:
 ```json
 {
   "error": {
-    "code": "SCHEMA_VIOLATION | TIMEOUT | POLICY_DENIED | INTERNAL | UNKNOWN",
+    "code": "SCHEMA_VIOLATION | TIMEOUT | POLICY_DENIED | CAPABILITY_NOT_FOUND | AGENT_UNAVAILABLE | EXECUTION_FAILED | INTERNAL_ERROR | UNKNOWN",
     "message": "human-readable description",
-    "retryable": true
+    "retryable": true,
+    "details": {}
   }
 }
 ```
@@ -369,8 +370,8 @@ All messages must include:
 {
   "agent_id": "string",
   "version": "semver",
-  "base_url": "https://agent-host",
-  "transport": "http | grpc | local",
+  "endpoint": "https://agent-host",
+  "transport": "http | grpc | ipc | websocket",
   "protocol": "native | a2a | mcp",
   "invoke": {
     "timeout_ms": 15000,
@@ -382,13 +383,17 @@ All messages must include:
       "description": "what this capability does",
       "input_schema": { "...": "JSON Schema" },
       "output_schema": { "...": "JSON Schema" },
-      "constraints": ["read_only | mutates_state | external_io"],
+      "constraints": {
+        "read_only": true,
+        "mutates_state": false,
+        "external_io": false
+      },
       "idempotent": true
     }
   ],
   "health_endpoint": "/health",
   "auth": {
-    "type": "mTLS | token | oauth",
+    "type": "none | bearer | mTLS | oauth | api_key",
     "scopes": ["capability:invoke"]
   }
 }
@@ -580,10 +585,10 @@ invoke(agent, payload)
 ### 7.3 Transport Resolution
 
 ```text
-if agent.transport == "local":
+if agent.transport == "ipc":
     direct function / IPC call
 else:
-    HTTP/gRPC request to agent.base_url
+    HTTP/gRPC/WebSocket request to agent.endpoint
 ```
 
 ---
@@ -889,7 +894,7 @@ POST /tasks/{task_id}/cancel
 {
   "agent_id": "...",
   "location": "local | remote",
-  "transport": "local | http | grpc",
+  "transport": "ipc | http | grpc | websocket",
   "avg_latency_ms": 20,
   "compute_class": "light | heavy"
 }

@@ -2,7 +2,7 @@
 
 > **Status**: 🟢 In Progress
 >
-> **Source**: [design.md — Sections 3.2, 4.1, 8.1, 9](../design.md)
+> **Source**: [design.md — Sections 2.5, 3.2, 4.1, 8.1, 9](../design.md)
 
 ---
 
@@ -10,11 +10,26 @@
 
 This document defines the **canonical JSON Schemas** for every data object in the GAIA kernel. These schemas are the wire protocol — the single source of truth that ensures all components (kernel, adapters, agents) speak the same language.
 
+All schemas follow [JSON Schema Draft 2020-12](https://json-schema.org/draft/2020-12/schema).
+
+---
+
+## Errata (Intentional Divergences from design.md)
+
+The following fields have been intentionally refined from their original definition in design.md to improve correctness and expressiveness:
+
+| Field | design.md | schemas.md | Rationale |
+| :--- | :--- | :--- | :--- |
+| `constraints` | Array of strings | Object with boolean flags | Allows a capability to express multiple constraints simultaneously (e.g., `mutates_state: true` AND `external_io: true`) |
+| `base_url` | `base_url` | `endpoint` | `endpoint` is transport-agnostic — supports IPC pipes, WebSocket URIs, and HTTP URLs |
+| `transport` | `http \| grpc \| local` | `http \| grpc \| ipc \| websocket` | `local` renamed to `ipc` for precision; `websocket` added for streaming-first agents |
+| `error.code: INTERNAL` | `INTERNAL` | `INTERNAL_ERROR` | Consistent with `_ERROR` / `_VIOLATION` suffix pattern across the enum |
+
 ---
 
 ## 1. AgentManifest
 
-The **Agent Manifest** is the "Digital Identity" submitted by every agent during the Handshake phase. It defines the agent's capabilities, its communication protocol, and its security constraints.
+The **Agent Manifest** is the "Digital Identity" submitted by every agent during the Handshake phase (design.md Section 4.1). It defines the agent's capabilities, invocation contract, communication protocol, and security constraints.
 
 ### Schema
 
@@ -38,7 +53,7 @@ The **Agent Manifest** is the "Digital Identity" submitted by every agent during
     },
     "transport": {
       "type": "string",
-      "enum": ["http", "ipc", "websocket", "grpc"],
+      "enum": ["http", "grpc", "ipc", "websocket"],
       "description": "The underlying network transport used by the agent"
     },
     "protocol": {
@@ -49,12 +64,30 @@ The **Agent Manifest** is the "Digital Identity" submitted by every agent during
     "endpoint": {
       "type": "string",
       "format": "uri",
-      "description": "The base URL or pipe address for the agent"
+      "description": "The base URL, pipe address, or WebSocket URI for the agent"
     },
     "health_endpoint": {
       "type": "string",
       "format": "uri",
       "description": "Endpoint for heartbeat and health checks"
+    },
+    "invoke": {
+      "type": "object",
+      "description": "Invocation contract: default timeout and async support",
+      "properties": {
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1000,
+          "default": 15000,
+          "description": "Default timeout for capability invocations"
+        },
+        "async_supported": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether the agent supports async (polling/streaming) invocations"
+        }
+      },
+      "required": ["timeout_ms"]
     },
     "capabilities": {
       "type": "array",
@@ -65,28 +98,80 @@ The **Agent Manifest** is the "Digital Identity" submitted by every agent during
     },
     "auth": {
       "type": "object",
+      "description": "Authentication and authorization configuration",
       "properties": {
-        "type": { "type": "string", "enum": ["none", "bearer", "mTLS", "api_key"] },
-        "secret_ref": { "type": "string", "description": "Reference to the secret in the Kernel vault" }
+        "type": {
+          "type": "string",
+          "enum": ["none", "bearer", "mTLS", "oauth", "api_key"]
+        },
+        "secret_ref": {
+          "type": "string",
+          "description": "Reference to the secret in the Kernel vault"
+        },
+        "scopes": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Authorized scopes for this agent (e.g., 'capability:invoke')"
+        }
       },
       "required": ["type"]
     }
   },
-  "required": ["agent_id", "version", "transport", "protocol", "endpoint", "capabilities"],
+  "required": [
+    "agent_id",
+    "version",
+    "transport",
+    "protocol",
+    "endpoint",
+    "invoke",
+    "capabilities"
+  ],
   "$defs": {
     "capability": {
       "type": "object",
+      "description": "A single capability offered by an agent",
       "properties": {
-        "name": { "type": "string", "pattern": "^[a-z0-9_]+$" },
-        "description": { "type": "string" },
-        "input_schema": { "type": "object", "description": "JSON Schema for expected input" },
-        "output_schema": { "type": "object", "description": "JSON Schema for guaranteed output" },
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z0-9_]+$",
+          "description": "Machine-readable capability identifier"
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of what this capability does"
+        },
+        "input_schema": {
+          "type": "object",
+          "description": "JSON Schema defining the expected input structure"
+        },
+        "output_schema": {
+          "type": "object",
+          "description": "JSON Schema defining the guaranteed output structure"
+        },
+        "idempotent": {
+          "type": "boolean",
+          "default": false,
+          "description": "If true, this capability is safe to retry without side effects"
+        },
         "constraints": {
           "type": "object",
+          "description": "Behavioral constraints declared by the agent",
           "properties": {
-            "read_only": { "type": "boolean", "default": true },
-            "mutates_state": { "type": "boolean", "default": false },
-            "external_io": { "type": "boolean", "default": false }
+            "read_only": {
+              "type": "boolean",
+              "default": true,
+              "description": "If true, the capability does not modify external state"
+            },
+            "mutates_state": {
+              "type": "boolean",
+              "default": false,
+              "description": "If true, the capability modifies external state"
+            },
+            "external_io": {
+              "type": "boolean",
+              "default": false,
+              "description": "If true, the capability performs network or filesystem I/O"
+            }
           }
         }
       },
@@ -100,7 +185,7 @@ The **Agent Manifest** is the "Digital Identity" submitted by every agent during
 
 ## 2. Task
 
-The **Task** object is the root state for a user goal. It tracks the overall progress, the evolved plan, and the global context.
+The **Task** object is the root state for a user goal (design.md Section 9.1). It tracks the overall progress, the evolved plan, and the global context.
 
 ### Schema
 
@@ -113,7 +198,10 @@ The **Task** object is the root state for a user goal. It tracks the overall pro
   "type": "object",
   "properties": {
     "task_id": { "type": "string", "format": "uuid" },
-    "goal": { "type": "string", "description": "The original natural language goal" },
+    "goal": {
+      "type": "string",
+      "description": "The original natural language goal (immutable after creation)"
+    },
     "status": {
       "type": "string",
       "enum": ["pending", "planning", "executing", "completed", "failed", "cancelled"]
@@ -122,9 +210,15 @@ The **Task** object is the root state for a user goal. It tracks the overall pro
       "type": "array",
       "items": { "$ref": "https://gaia-kernel.org/schemas/step.json" }
     },
+    "current_step": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Index of the currently active step in the plan (O(1) lookup)"
+    },
     "metadata": {
       "type": "object",
-      "additionalProperties": true
+      "additionalProperties": true,
+      "description": "Extensible key-value store for client-provided context"
     },
     "created_at": { "type": "string", "format": "date-time" },
     "updated_at": { "type": "string", "format": "date-time" },
@@ -138,7 +232,7 @@ The **Task** object is the root state for a user goal. It tracks the overall pro
 
 ## 3. Step
 
-An individual unit of work within a plan.
+An individual unit of work within a plan (design.md Section 9.2).
 
 ### Schema
 
@@ -150,26 +244,30 @@ An individual unit of work within a plan.
   "type": "object",
   "properties": {
     "step_id": { "type": "string" },
-    "capability": { "type": "string", "description": "The capability required for this step" },
-    "input": { "type": "object", "description": "The input data, potentially containing interpolations" },
+    "capability": {
+      "type": "string",
+      "description": "The capability required for this step (must exist in the Capability Registry)"
+    },
+    "input": {
+      "type": "object",
+      "description": "The input data, potentially containing interpolation references (e.g., {{step_1.output.url}})"
+    },
     "depends_on": {
       "type": "array",
       "items": { "type": "string" },
-      "description": "List of step_ids this step depends on"
+      "default": [],
+      "description": "List of step_ids that must complete before this step can execute"
     },
     "status": {
       "type": "string",
       "enum": ["pending", "running", "pending_async", "done", "failed"]
     },
-    "assigned_agent": { "type": "string", "description": "The agent_id selected for this step" },
-    "output": { "type": "object" },
-    "error": {
-      "type": "object",
-      "properties": {
-        "code": { "type": "string" },
-        "message": { "type": "string" }
-      }
+    "assigned_agent": {
+      "type": "string",
+      "description": "The agent_id selected by the Capability Registry for this step"
     },
+    "output": { "type": "object" },
+    "error": { "$ref": "https://gaia-kernel.org/schemas/error.json" },
     "retry_count": { "type": "integer", "default": 0 }
   },
   "required": ["step_id", "capability", "input", "status"]
@@ -180,7 +278,7 @@ An individual unit of work within a plan.
 
 ## 4. Request
 
-The message sent from the Kernel to an Agent to trigger a capability invocation.
+The message sent from the Kernel to an Agent to trigger a capability invocation (design.md Section 3.2).
 
 ### Schema
 
@@ -191,7 +289,15 @@ The message sent from the Kernel to an Agent to trigger a capability invocation.
   "title": "Request",
   "type": "object",
   "properties": {
+    "type": {
+      "const": "REQUEST",
+      "description": "Message type discriminator"
+    },
     "request_id": { "type": "string", "format": "uuid" },
+    "from": {
+      "type": "string",
+      "description": "The originator of the request (kernel or agent_id) for audit attribution"
+    },
     "task_id": { "type": "string", "format": "uuid" },
     "step_id": { "type": "string" },
     "capability": { "type": "string" },
@@ -201,9 +307,13 @@ The message sent from the Kernel to an Agent to trigger a capability invocation.
       "enum": ["sync", "async"],
       "default": "sync"
     },
-    "timeout_ms": { "type": "integer", "minimum": 1000 }
+    "timeout_ms": {
+      "type": "integer",
+      "minimum": 1000,
+      "description": "Per-request timeout override (falls back to agent invoke.timeout_ms)"
+    }
   },
-  "required": ["request_id", "task_id", "step_id", "capability", "input"]
+  "required": ["type", "request_id", "from", "task_id", "step_id", "capability", "input"]
 }
 ```
 
@@ -211,7 +321,7 @@ The message sent from the Kernel to an Agent to trigger a capability invocation.
 
 ## 5. Response
 
-The standardized output returned by an Agent after processing a Request.
+The standardized output returned by an Agent after processing a Request (design.md Section 3.2).
 
 ### Schema
 
@@ -246,7 +356,7 @@ The standardized output returned by an Agent after processing a Request.
 
 ## 6. Error
 
-The structured failure object used throughout the system.
+The structured failure object used throughout the system (design.md Section 3.2).
 
 ### Schema
 
@@ -266,12 +376,25 @@ The structured failure object used throughout the system.
         "CAPABILITY_NOT_FOUND",
         "AGENT_UNAVAILABLE",
         "EXECUTION_FAILED",
-        "INTERNAL_ERROR"
-      ]
+        "INTERNAL_ERROR",
+        "UNKNOWN"
+      ],
+      "description": "Machine-readable error classification"
     },
-    "message": { "type": "string" },
-    "retryable": { "type": "boolean", "default": false },
-    "details": { "type": "object", "additionalProperties": true }
+    "message": {
+      "type": "string",
+      "description": "Human-readable error description"
+    },
+    "retryable": {
+      "type": "boolean",
+      "default": false,
+      "description": "If true, the kernel may retry this step per the RetryPolicy"
+    },
+    "details": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Optional structured context (e.g., validation errors, stack traces)"
+    }
   },
   "required": ["code", "message"]
 }
@@ -279,21 +402,212 @@ The structured failure object used throughout the system.
 
 ---
 
+## 7. Event
+
+Asynchronous event emitted by the Kernel via the Event Bus (design.md Sections 3.2, 3.6).
+
+### Schema
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gaia-kernel.org/schemas/event.json",
+  "title": "Event",
+  "type": "object",
+  "properties": {
+    "type": {
+      "const": "EVENT",
+      "description": "Message type discriminator"
+    },
+    "name": {
+      "type": "string",
+      "enum": [
+        "TASK_CREATED",
+        "TASK_PLANNING",
+        "TASK_EXECUTING",
+        "TASK_COMPLETED",
+        "TASK_FAILED",
+        "TASK_CANCELLED",
+        "STEP_STARTED",
+        "STEP_COMPLETED",
+        "STEP_FAILED",
+        "PLAN_GENERATED",
+        "PLAN_REJECTED",
+        "REPLAN_TRIGGERED",
+        "AGENT_REGISTERED",
+        "AGENT_DEGRADED",
+        "AGENT_QUARANTINED",
+        "AGENT_BLACKLISTED",
+        "AGENT_EJECTED",
+        "AGENT_DISCONNECTED"
+      ],
+      "description": "The event name from the Event Catalog"
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Event-specific data"
+    },
+    "task_id": { "type": "string", "format": "uuid" },
+    "step_id": { "type": "string" },
+    "timestamp": { "type": "string", "format": "date-time" }
+  },
+  "required": ["type", "name", "task_id", "timestamp"]
+}
+```
+
+---
+
+## 8. AgentRecord
+
+The Kernel's internal record for a registered agent (design.md Section 9.3). This is the runtime counterpart of the AgentManifest — it tracks the agent's health and behavioral metrics after registration.
+
+### Schema
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gaia-kernel.org/schemas/agent-record.json",
+  "title": "AgentRecord",
+  "type": "object",
+  "properties": {
+    "agent_id": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["active", "degraded", "quarantined", "blacklisted"],
+      "description": "Current trust status of the agent"
+    },
+    "trust_score": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "Composite trust score used for routing decisions"
+    },
+    "registered_at": { "type": "string", "format": "date-time" },
+    "last_health_check": { "type": "string", "format": "date-time" },
+    "rolling_metrics": {
+      "type": "object",
+      "properties": {
+        "success_rate": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "p95_latency_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "error_counts": {
+          "type": "object",
+          "additionalProperties": { "type": "integer" },
+          "description": "Error counts keyed by error code (e.g., {'TIMEOUT': 2, 'SCHEMA_VIOLATION': 0})"
+        }
+      }
+    }
+  },
+  "required": ["agent_id", "status", "trust_score", "registered_at"]
+}
+```
+
+---
+
+## 9. RetryPolicy
+
+Per-step retry configuration (design.md Section 8.1).
+
+### Schema
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gaia-kernel.org/schemas/retry-policy.json",
+  "title": "RetryPolicy",
+  "type": "object",
+  "properties": {
+    "max_attempts": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 3,
+      "description": "Maximum number of retry attempts (0 = no retries)"
+    },
+    "backoff": {
+      "type": "string",
+      "enum": ["none", "linear", "exponential"],
+      "default": "exponential"
+    },
+    "base_delay_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 500
+    },
+    "max_delay_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 10000
+    }
+  },
+  "required": ["max_attempts"]
+}
+```
+
+---
+
+## 10. Snapshot
+
+State checkpoint for tiered state management (design.md Section 2.5).
+
+### Schema
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gaia-kernel.org/schemas/snapshot.json",
+  "title": "Snapshot",
+  "type": "object",
+  "properties": {
+    "summary": {
+      "type": "string",
+      "description": "LLM-generated summary of the state at checkpoint time"
+    },
+    "key_state": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Essential state variables preserved across pruning"
+    },
+    "checkpoint_step": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "The step index at which this snapshot was taken"
+    },
+    "created_at": { "type": "string", "format": "date-time" }
+  },
+  "required": ["summary", "key_state", "checkpoint_step", "created_at"]
+}
+```
+
+---
+
 ## Related Documents
 
-* [Lifecycle State Machines](lifecycles.md) — valid status transitions
-* [Communication Spec](communication.md) — message flow using these schemas
-* [Error Code Catalog](../reference/error-codes.md) — all error codes
-* [Event Catalog](../reference/event-catalog.md) — all event types
+* [Lifecycle State Machines](lifecycles.md) — valid status transitions for Task, Step, and AgentRecord
+* [Communication Spec](communication.md) — message flow using Request, Response, and Event schemas
+* [Failure Handling Spec](failure-handling.md) — RetryPolicy usage and escalation paths
+* [State Management Spec](state-management.md) — Snapshot triggers and tiered storage
+* [Error Code Catalog](../reference/error-codes.md) — all error codes with retryability
+* [Event Catalog](../reference/event-catalog.md) — all event types with payload definitions
 
 ---
 
 ## TODO
 
-- [x] Define AgentManifest schema
-- [x] Define Task schema
+- [x] Define AgentManifest schema (with invoke, idempotent, scopes)
+- [x] Define Task schema (with current_step)
 - [x] Define Step schema
-- [x] Define Request/Response schemas
-- [x] Define Error schema
-- [ ] Define Event schema
-- [ ] Define Snapshot schema
+- [x] Define Request schema (with type, from)
+- [x] Define Response schema
+- [x] Define Error schema (with UNKNOWN)
+- [x] Define Event schema
+- [x] Define AgentRecord schema
+- [x] Define RetryPolicy schema
+- [x] Define Snapshot schema
+- [x] Document errata (intentional divergences from design.md)
