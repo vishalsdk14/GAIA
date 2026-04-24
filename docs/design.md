@@ -316,16 +316,26 @@ Orchestrator Kernel
 
 #### System Events (emitted by Kernel)
 
-| Event Name       | When                                    |
-| :--------------- | :-------------------------------------- |
-| STEP_COMPLETED   | step finished successfully              |
-| STEP_FAILED      | step failed after exhausting retries    |
-| TASK_COMPLETED   | all steps done                          |
-| TASK_FAILED      | unrecoverable failure                   |
-| TASK_CANCELLED   | user or system cancelled                |
-| AGENT_REGISTERED | new agent attached                      |
-| AGENT_EJECTED    | agent quarantined/blacklisted           |
-| PLAN_GENERATED   | planner produced new steps              |
+| Event Name         | When                                        |
+| :----------------- | :------------------------------------------ |
+| TASK_CREATED       | new task submitted by client                |
+| TASK_PLANNING      | planner invoked for task                    |
+| TASK_EXECUTING     | first step dispatched                       |
+| TASK_COMPLETED     | all steps done, has_more == false            |
+| TASK_FAILED        | unrecoverable failure                       |
+| TASK_CANCELLED     | user or system cancelled                    |
+| STEP_STARTED       | step dispatched to agent                    |
+| STEP_COMPLETED     | step finished successfully                  |
+| STEP_FAILED        | step failed after exhausting retries        |
+| PLAN_GENERATED     | planner produced new/updated steps          |
+| PLAN_REJECTED      | planner output failed validation            |
+| REPLAN_TRIGGERED   | escalation path triggered replanning        |
+| AGENT_REGISTERED   | new agent attached and ready                |
+| AGENT_DEGRADED     | agent trust score dropped below threshold   |
+| AGENT_QUARANTINED  | agent isolated due to hard failure          |
+| AGENT_BLACKLISTED  | agent permanently blocked (policy violation)|
+| AGENT_EJECTED      | agent forcibly removed (crash/health down)  |
+| AGENT_DISCONNECTED | agent gracefully detached (DRAIN flow)      |
 
 #### Subscribers
 
