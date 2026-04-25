@@ -132,9 +132,8 @@ GAIA natively consumes **Google A2A** (agent-to-agent) and **Anthropic MCP** (ag
 | :--- | :---: | :--- |
 | [Technical Specification](docs/design.md) | ✅ Complete | 1200+ line design document covering the full kernel architecture |
 | Component Specifications | ✅ Complete | 12 detailed documents covering schemas, control loops, and security |
-| Tech Stack Decision | ✅ Complete | Polyglot architecture (Go Core, TS/Python SDKs, Rust modules) |
-| Repository Scaffolding | ✅ Complete | Modular monorepo with production Go kernel structure |
-| Core Implementation (Code) | ✅ Complete | Phases 1-6 implemented; API Gateway and Security live |
+| Core Implementation | ✅ Complete | Go Kernel with 10-phase control loop, SQLite persistence, and CEL Policy Engine |
+| Ecosystem & SDKs | ✅ Complete | Type-safe TS/Python SDKs, Unified CLI, and Docusaurus site |
 
 ---
 
@@ -143,22 +142,19 @@ GAIA natively consumes **Google A2A** (agent-to-agent) and **Anthropic MCP** (ag
 GAIA is a polyglot project. To initialize the repository and begin development, you need the following installed:
 
 * **Go 1.22+**: For the core kernel.
-* **Node.js 20+ & NPM**: For the TypeScript SDK and protocol adapters.
-* **Python 3.10+**: For the Python SDK and AI agent integrations.
-* **Git**: For version control.
+* **Node.js 20+ & NPM**: For the TypeScript SDK and documentation site.
+* **Python 3.10+**: For the Python SDK and validation scripts.
 
-### Quick Start (Scaffolding)
+### Quick Start (CLI)
 
-To initialize the repository structure and language modules, run:
+The easiest way to interact with GAIA is via the unified CLI:
 
 ```bash
-./scripts/init.sh
+# Register an agent, submit a goal, and monitor the stream
+./gaia --help
 ```
 
-This will create the following isolated modules:
-* `src/kernel/` (Go)
-* `libs/sdk-ts/` (TypeScript)
-* `libs/sdk-py/` (Python)
+For detailed setup instructions, visit the [Documentation Site](docs/site/docs/intro.md).
 
 ---
 
@@ -208,11 +204,19 @@ This will create the following isolated modules:
 - [x] Orchestrator (Goal Manager) implementation
 - [x] Multi-protocol transport routing (A2A, MCP, Native)
 
-### Phase 7: SDKs & Ecosystem (Next)
-- [ ] TypeScript SDK (libs/sdk-ts)
-- [ ] Python SDK (libs/sdk-py)
-- [ ] Documentation site (Docusaurus/Hugo)
-- [ ] Stress testing & failure injection
+### Phase 7: SDKs & Ecosystem (Complete)
+- [x] TypeScript SDK (libs/sdk-ts) with full type-safety
+- [x] Python SDK (libs/sdk-py) with async/await support
+- [x] Docusaurus-based Documentation Site (docs/site)
+- [x] Automated JSON Schema ➔ SDK Type generation
+- [x] Stress testing & failure injection frameworks
+- [x] GAIA Unified CLI (`gaia` script)
+
+### Phase 8: Security Hardening & mTLS (Next)
+- [ ] mTLS Handshake for Agent Identity
+- [ ] JWT-based task authorization
+- [ ] Policy-based data encryption at rest
+- [ ] Secret management integration
 
 ### Phase 8: GAIA Dashboard (Future)
 - [ ] Real-time DAG visualization
@@ -268,9 +272,11 @@ GAIA/
 │       │   └── common/            # Event Bus & Shared Utilities
 │       ├── main.go                # Kernel Entry Point
 │       └── go.mod                 # Go dependencies
-├── libs/                          # SDKs (Coming soon)
-│   ├── sdk-ts/                    # TypeScript SDK
-│   └── sdk-py/                    # Python SDK
+├── libs/                          # SDKs & Ecosystem
+│   ├── sdk-ts/                    # TypeScript SDK (axios + ws)
+│   └── sdk-py/                    # Python SDK (httpx + websockets)
+├── docs/
+│   ├── site/                      # Docusaurus documentation site
 ├── CHANGELOG.md
 ├── CODE_OF_CONDUCT.md
 ├── CONTRIBUTING.md
