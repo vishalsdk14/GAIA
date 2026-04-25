@@ -71,20 +71,33 @@ func main() {
 
 	// Phase 8: Encryption at Rest
 	// Use the SecretRegistry to fetch the master encryption key.
+	// Support both raw bytes (32-char) and hex-encoded (64-char) keys.
 	if encKey, err := secrets.GetSecret("ENCRYPTION_KEY"); err == nil {
-		if err := store.EnableEncryption([]byte(encKey)); err != nil {
-			log.Fatalf("Critical: Failed to enable encryption: %v", err)
+		var keyBytes []byte
+		if len(encKey) == 64 {
+			// Assume hex encoding for 64-character strings
+			if enc, err := state.NewEncryptorFromHex(encKey); err == nil {
+				if err := store.EnableEncryption(enc.Key()); err == nil {
+					logger.L.Info("Encryption at Rest enabled (Hex key)")
+				}
+			}
+		} else {
+			keyBytes = []byte(encKey)
+			if err := store.EnableEncryption(keyBytes); err != nil {
+				log.Fatalf("Critical: Failed to enable encryption: %v", err)
+			}
+			logger.L.Info("Encryption at Rest enabled (Raw key)")
 		}
-		logger.L.Info("Encryption at Rest enabled for Tier 4 storage")
 	}
 
 	// Phase 8: Configure Security Modes & JWT
 	server.AuthMode = getEnv("GAIA_AUTH_MODE", "legacy")
 	
 	// JWT Configuration (Standard/Strict Mode)
-	server.AuthJWTEnabled = getEnv("GAIA_AUTH_JWT_ENABLED", "false") == "true"
 	if jwtSecret, err := secrets.GetSecret("JWT_SECRET"); err == nil {
 		server.JWTSecret = []byte(jwtSecret)
+	} else if server.AuthMode == "standard" {
+		log.Fatalf("Critical: GAIA_AUTH_MODE=standard requires GAIA_JWT_SECRET")
 	}
 
 	server.CACertPath = getEnv("GAIA_CA_CERT", "./certs/ca.crt")

@@ -39,20 +39,16 @@ func (s *Server) getAgentID(r *http.Request) string {
 		return ""
 
 	case "standard":
-		// 2. JWT Verification (if enabled)
-		if s.AuthJWTEnabled {
-			authHeader := r.Header.Get("Authorization")
-			if authHeader == "" {
-				return ""
-			}
-			agentID, err := VerifyToken(authHeader, s.JWTSecret)
-			if err != nil {
-				return ""
-			}
-			return agentID
+		// 2. JWT Verification (Mandatory for standard mode)
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			return ""
 		}
-		// Fallback to Header if JWT is explicitly disabled in standard mode
-		return r.Header.Get("X-Agent-ID")
+		agentID, err := VerifyToken(authHeader, s.JWTSecret)
+		if err != nil {
+			return ""
+		}
+		return agentID
 
 	case "legacy":
 		fallthrough

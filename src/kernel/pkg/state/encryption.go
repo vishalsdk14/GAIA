@@ -44,6 +44,11 @@ type Encryptor struct {
 	key []byte
 }
 
+// Key returns the underlying master key bytes.
+func (e *Encryptor) Key() []byte {
+	return e.key
+}
+
 // NewEncryptor initializes a new Encryptor with the provided master key.
 // The key must be exactly 32 bytes long.
 func NewEncryptor(key []byte) (*Encryptor, error) {

@@ -38,7 +38,6 @@ type Server struct {
 
 	// Security Configuration
 	AuthMode        string
-	AuthJWTEnabled  bool
 	JWTSecret       []byte
 	CACertPath      string
 	ServerCertPath  string
