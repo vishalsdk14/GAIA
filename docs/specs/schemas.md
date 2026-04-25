@@ -69,6 +69,15 @@ The **Agent Manifest** is the "Digital Identity" submitted by every agent during
       "type": "string",
       "description": "Endpoint for heartbeat and health checks"
     },
+    "health_endpoint_spec": {
+      "type": "object",
+      "description": "Protocol expected for the health endpoint",
+      "properties": {
+        "method": { "enum": ["GET", "POST"] },
+        "expected_response": { "type": "object" },
+        "timeout_ms": { "type": "integer" }
+      }
+    },
     "invoke": {
       "type": "object",
       "description": "Invocation contract: default timeout and async support",
@@ -335,6 +344,10 @@ An individual unit of work within a plan (design.md Section 9.2).
       "description": "The agent_id selected by the Capability Registry for this step"
     },
     "output": { "description": "The output data (any JSON value) returned by the agent" },
+    "output_schema": {
+      "$ref": "https://json-schema.org/draft/2020-12/schema",
+      "description": "The output schema copied at the time the step was created (prevents schema drift during async polling)"
+    },
     "error": { "$ref": "https://gaia-kernel.org/schemas/error.json" },
     "retry_count": { "type": "integer", "default": 0 }
   },

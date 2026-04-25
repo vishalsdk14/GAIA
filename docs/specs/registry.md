@@ -63,7 +63,15 @@ sequenceDiagram
 ### Handshake Rules
 1. The kernel strictly validates the `AgentManifest` against Draft 2020-12 JSON Schemas.
 2. Capability names must match the regex `^[a-z0-9_.-]+$`.
-3. If an agent re-registers with the same `agent_id`, the existing `AgentRecord` is overwritten, but the `rolling_metrics` are preserved to prevent trust score resetting.
+
+### Re-registration Behavior
+When an agent with an existing `agent_id` reconnects and re-registers:
+1. **In-flight Steps**: Continue on the old agent process without interruption.
+2. **Capabilities**: Old capability bindings are removed, new ones are added (version mismatch possible if updated).
+3. **Auth**: Old credentials revoked, new ones validated.
+4. **Rolling Metrics**: PRESERVED (`success_rate`, `p95_latency_ms`).
+5. **Trust Score**: Recalculated from preserved metrics.
+6. **New AgentRecord**: Overwrites the active connection record; old connection transitions to `disconnected`.
 
 ---
 
@@ -96,9 +104,9 @@ When a step enters the `pending` state, the Dispatcher queries the Registry to s
 3. Filter out agents lacking the required `auth.scopes` for the task context.
 
 ### 4.2 Scoring Formula
-Eligible agents are ranked by a dynamic score:
+Eligible agents are ranked by a dynamic Dispatcher Ranking Score:
 
-$$ Score = (Trust Score \times 0.6) + (Latency Score \times 0.3) + (Transport Bonus \times 0.1) $$
+$$ Ranking Score = (Trust Score \times 0.6) + (Latency Score \times 0.3) + (Transport Bonus \times 0.1) $$
 
 * **Trust Score**: Taken directly from the `AgentRecord` (max 1.0).
 * **Latency Score**: `1.0 - (Agent p95_latency / Global Avg Latency)`. Bounded to [0.0, 1.0].

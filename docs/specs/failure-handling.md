@@ -73,12 +73,24 @@ When an agent returns a failure or fails a health check, the kernel applies imme
 
 ### 3.1 Trust Score & Degradation
 
-The `trust_score` (0.0 to 1.0) is a rolling composite metric. It acts as the primary weighting factor for the Capability Registry's routing decisions.
+The `trust_score` (0.0 to 1.0) is a rolling composite metric. It acts as the primary health indicator for an agent, distinct from the Dispatcher's Ranking Score (see registry.md).
 
 $$ Trust Score = (Success Rate \times 0.6) + (Latency Score \times 0.3) + (Availability \times 0.1) $$
 
 * **Latency Score**: Normalized against the agent's declared SLA (`avg_latency_ms`).
-* **Degraded State**: If the `trust_score` drops below `0.70` (configurable), the agent transitions to `degraded`. It receives a massive routing penalty but remains eligible if no fallback exists.
+* **Degraded State**: If the `trust_score` drops below the degradation threshold, the agent transitions to `degraded`.
+
+### 3.1.1 Degradation Thresholds (Configurable)
+
+| Metric | Threshold | Trigger | Configurable? |
+|:---|:---|:---|:---|
+| Consecutive Timeouts | > 3 | Degrade | Yes, default 3 |
+| Success Rate Drop | < 0.70 | Degrade | Yes, default 0.70 |
+| Degrade Recovery Threshold | > 0.85 | Active | Yes, default 0.85 |
+| Recovery Window | 100 requests or 10 health checks | Time-based | Yes |
+| Quarantine Consecutive Failures | > 5 | Quarantine | Yes, default 5 |
+
+All thresholds are re-evaluated on every health check and step completion. Latency-based thresholds use `p95_latency_ms` vs. SLA.
 
 ### 3.2 Enforcement Matrix
 
@@ -91,7 +103,7 @@ $$ Trust Score = (Success Rate \times 0.6) + (Latency Score \times 0.3) + (Avail
 
 ### 3.3 Restoration Criteria
 
-* **Degraded**: Automatically recovers to `active` if rolling metrics push `trust_score` back above `0.85` over the last 100 requests or 10 health checks.
+* **Degraded**: Automatically recovers to `active` if rolling metrics push `trust_score` back above the Recovery Threshold over the recovery window.
 * **Quarantined**: Requires manual intervention. An admin must review the schema violation and clear the quarantine via the Kernel Admin API.
 * **Blacklisted**: Terminal. The agent credentials are wiped, and it cannot re-register without new certificates/tokens.
 

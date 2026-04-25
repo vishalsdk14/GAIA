@@ -360,7 +360,10 @@ if fallback agent available for step.capability:
     step.assigned_agent = fallback_agent
     step.status = "pending"
 
-elif replan allowed (replan_count < MAX_REPLANS, default: 2):
+elif replan_allowed:
+    # A replan is allowed if:
+    # 1. replan_count < MAX_REPLANS (increments each time task enters planning)
+    # 2. AND PlanRecord.generation < 2 (enforced by schema)
     task.status = "planning"         # re-enter Phase 2
     PlanRecord.status = "replanning"
     emit REPLAN_TRIGGERED

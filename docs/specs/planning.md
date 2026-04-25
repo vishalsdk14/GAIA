@@ -75,9 +75,13 @@ Interpolation is resolved by the Kernel **before** dispatching a step to an agen
 4. **Replace**: Swap the marker for the concrete value.
 
 ### 3.3 Validation Rules
-* **Done-Only**: A reference to a `step_id` is only valid if that step's status is `done`.
-* **DAG Integrity**: References must follow the dependency graph (`depends_on`).
-* **Unresolvable**: Any reference that cannot be resolved results in a `PLAN_REJECTED` event or a step `failed` status with `EXECUTION_FAILED`.
+**At Planning Time (Phase 2):**
+* Planner strictly checks that `{{step_id...}}` references point to valid, existing steps in the plan.
+* If unresolvable, the Planner rejects the plan generation (`PLAN_REJECTED`).
+
+**At Execution Time (Phase 4):**
+* Interpolation resolves actual runtime values.
+* If a reference is unresolvable or missing from state, the step fails immediately with `EXECUTION_FAILED` (triggers step escalation).
 
 ---
 
@@ -85,10 +89,10 @@ Interpolation is resolved by the Kernel **before** dispatching a step to an agen
 
 The kernel validates every plan to ensure it is a Directed Acyclic Graph (DAG).
 
-1. **Build Adjacency List**: Map every step to its `depends_on` list.
-2. **Cycle Check**: Perform a Depth-First Search (DFS) for back-edges.
-3. **Interpolation Check**: Ensure every `{{step_id...}}` reference has a matching `depends_on` entry.
-4. **Rejection**: If a cycle or dangling reference is found, emit `PLAN_REJECTED` and trigger Planner Failure Recovery.
+1. **Extract Interpolation Links**: Scan all `{{step_id.output}}` markers inside each `step.input` and synthesize them into implicit dependencies.
+2. **Build Adjacency Graph**: Combine explicit `depends_on` lists with the implicit interpolation links.
+3. **Cycle Check**: Perform a Depth-First Search (DFS) for back-edges on the combined graph.
+4. **Rejection**: If any cycle is detected (whether explicit via `depends_on` or implicit via interpolation loops), emit `PLAN_REJECTED` and trigger Planner Failure Recovery.
 
 ---
 
