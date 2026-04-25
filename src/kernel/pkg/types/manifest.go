@@ -34,6 +34,7 @@ const (
 	ProtocolNative Protocol = "native"
 	ProtocolA2A    Protocol = "a2a"
 	ProtocolMCP    Protocol = "mcp"
+	ProtocolWebSocket Protocol = "websocket"
 )
 
 // AgentManifest represents the authoritative registration record for a GAIA agent.

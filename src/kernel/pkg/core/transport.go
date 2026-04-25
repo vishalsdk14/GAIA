@@ -31,6 +31,7 @@ type ProtocolDispatcher struct {
 	native *NativeTransport
 	mcp    *MCPTransport
 	a2a    *A2ATransport
+	ws     *WSTransport
 }
 
 func NewProtocolDispatcher() *ProtocolDispatcher {
@@ -38,6 +39,7 @@ func NewProtocolDispatcher() *ProtocolDispatcher {
 		native: &NativeTransport{},
 		mcp:    &MCPTransport{},
 		a2a:    &A2ATransport{},
+		ws:     NewWSTransport(),
 	}
 }
 
@@ -49,6 +51,8 @@ func (d *ProtocolDispatcher) Dispatch(req *types.Request, agent *types.AgentMani
 		return d.mcp.Dispatch(req, agent)
 	case types.ProtocolA2A:
 		return d.a2a.Dispatch(req, agent)
+	case types.ProtocolWebSocket:
+		return d.ws.Dispatch(req, agent)
 	default:
 		return nil, fmt.Errorf("transport: unsupported protocol: %s", agent.Protocol)
 	}

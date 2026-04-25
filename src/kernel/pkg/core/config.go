@@ -48,6 +48,9 @@ type KernelConfig struct {
 	// MaxConcurrentTasks defines the maximum number of parallel tasks the kernel will process.
 	MaxConcurrentTasks int `json:"max_concurrent_tasks"`
 
+	// MaxConcurrentPerAgent defines the maximum number of parallel steps a single agent can handle.
+	MaxConcurrentPerAgent int `json:"max_concurrent_per_agent"`
+
 	// DBPath is the location of the persistent SQLite database for the kernel.
 	DBPath string `json:"db_path"`
 }
@@ -60,6 +63,7 @@ func DefaultConfig() *KernelConfig {
 		PlannerModel:       "llama3",
 		MaxReplans:         2,
 		MaxConcurrentTasks: 10,
+		MaxConcurrentPerAgent: 3,
 		DBPath:             "./data/gaia_state.db",
 	}
 }

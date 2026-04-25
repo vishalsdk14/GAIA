@@ -110,6 +110,7 @@ func (c *Coordinator) phase1Submission() error {
 
 // phase2Planning implements Phase 2 of the control loop.
 // It invokes the probabilistic planner and validates the returned plan DAG.
+// It includes Phase 2.3 failure recovery (Correction Prompts).
 func (c *Coordinator) phase2Planning() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -118,26 +119,39 @@ func (c *Coordinator) phase2Planning() error {
 		return nil
 	}
 
-	// 1. Assemble planner input (State Snapshot + Capabilities)
 	activeState := c.stateMgr.GetSnapshot()
 	
-	// 2. Invoke the Planner Adapter (Local or Cloud)
-	// Note: Capabilities list would be fetched from registry in a real implementation
-	plan, err := c.planner.GeneratePlan(c.task.Goal, activeState, nil)
-	if err != nil {
-		// In this foundation phase, the planners return errors since network is not implemented.
-		// We catch it here to satisfy the skeleton flow.
-		fmt.Printf("Coordinator [task=%s]: Planner invocation skipped (foundation phase)\n", c.task.TaskID)
-		return nil 
+	// Phase 2.3: Failure Recovery Loop
+	var lastErr error
+	var correctionPrompt string
+	
+	for attempt := 0; attempt < 2; attempt++ {
+		goal := c.task.Goal
+		if correctionPrompt != "" {
+			goal = correctionPrompt
+		}
+
+		plan, err := c.planner.GeneratePlan(goal, activeState, nil)
+		if err == nil {
+			// Success!
+			c.task.Status = types.TaskStatusExecuting
+			c.task.UpdatedAt = time.Now().UTC()
+			c.task.Plan = plan.Steps
+			return nil
+		}
+
+		// Check if the error is a schema violation (malformed JSON)
+		lastErr = err
+		if types.ErrorCode(err.Error()) == types.ErrorCodeSchemaViolation || attempt == 0 {
+			// In foundation phase, we simulate the correction prompt build
+			correctionPrompt = BuildCorrectionPrompt("INVALID_JSON_HERE", err.Error())
+			fmt.Printf("Coordinator [task=%s]: Retrying with correction prompt (attempt %d)\n", c.task.TaskID, attempt+1)
+			continue
+		}
+		break
 	}
 
-	// 3. Post-Planning Transition
-	c.task.Status = types.TaskStatusExecuting
-	c.task.UpdatedAt = time.Now().UTC()
-	c.task.Plan = plan.Steps
-	
-	// TODO: Emit PLAN_GENERATED & TASK_EXECUTING events
-	return nil
+	return fmt.Errorf("core: planner failed after retries: %w", lastErr)
 }
 
 // isTerminal checks if the task has reached a final state (completed, failed, or cancelled).
@@ -186,12 +200,29 @@ func (c *Coordinator) executeDAG() error {
 		return nil
 	}
 
+	// Per-Agent Throttling (Phase 3.2)
+	// We track how many steps are currently running for each agent in this task.
+	agentCounts := make(map[string]int)
+	for _, s := range c.task.Plan {
+		if s.Status == types.StepStatusRunning || s.Status == types.StepStatusPendingAsync {
+			// In a real impl, we'd know which agent was assigned.
+			// Here we assume "mock.agent" for simplicity.
+			agentCounts["mock.agent"]++
+		}
+	}
+
 	var wg sync.WaitGroup
 	errChan := make(chan error, len(readySteps))
 
-	// Enforce MaxConcurrentTasks (roughly equivalent to worker pool size for this task)
-	// For simplicity in this implementation, we fire them off concurrently up to len(readySteps).
 	for _, sPtr := range readySteps {
+		// Check throttle
+		targetAgent := "mock.agent" 
+		if agentCounts[targetAgent] >= c.config.MaxConcurrentPerAgent {
+			fmt.Printf("Coordinator [task=%s]: Throttling step %s for agent %s\n", c.task.TaskID, sPtr.StepID, targetAgent)
+			continue
+		}
+		agentCounts[targetAgent]++
+
 		wg.Add(1)
 		go func(step *types.Step) {
 			defer wg.Done()

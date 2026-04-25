@@ -74,3 +74,15 @@ Generate the raw JSON plan now.`, goal, string(stateBytes), string(capBytes))
 
 	return prompt, nil
 }
+
+// BuildCorrectionPrompt is used for Phase 2.3 (Planner Failure Recovery).
+// It instructs the LLM to fix a specific schema violation or malformed JSON.
+func BuildCorrectionPrompt(failedResponse string, errorDetail string) string {
+	return fmt.Sprintf(`Your previous response was invalid.
+ERROR: %s
+
+FAILED RESPONSE:
+%s
+
+Please correct the error and return ONLY valid JSON matching the requested schema. Do not include extra text.`, errorDetail, failedResponse)
+}
