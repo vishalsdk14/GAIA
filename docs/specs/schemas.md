@@ -123,6 +123,22 @@ The **Agent Manifest** is the "Digital Identity" submitted by every agent during
         }
       },
       "required": ["type"]
+    },
+    "state_requirements": {
+      "type": "object",
+      "description": "Declaration of Managed Agent State requirements (Tier 4 storage)",
+      "properties": {
+        "required": {
+          "type": "boolean",
+          "default": false,
+          "description": "If true, the Kernel will provision an isolated Key-Value database namespace for this agent"
+        },
+        "max_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Requested storage quota in bytes (subject to Kernel Policy Engine limits)"
+        }
+      }
     }
   },
   "required": [
@@ -615,7 +631,16 @@ Asynchronous event emitted by the Kernel via the Event Bus (design.md Sections 3
     },
     "task_id": { "type": "string", "format": "uuid" },
     "step_id": { "type": "string" },
-    "timestamp": { "type": "string", "format": "date-time" }
+    "timestamp": { "type": "string", "format": "date-time" },
+    "sequence_number": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Per-task monotonic counter to guarantee causal event ordering"
+    },
+    "previous_event_id": {
+      "type": "string",
+      "description": "Hash of the previous event for integrity verification in the immutable log"
+    }
   },
   "allOf": [
     {

@@ -478,6 +478,15 @@ Agents cannot address each other. All calls must be: `REQUEST(capability, input,
 
 ---
 
+### 5.4 Kernel as Resource Provider (Managed State)
+
+Agents are strictly forbidden from provisioning their own "Shadow IT" resources (e.g., external databases) to store state across tasks.
+* **The Paradigm**: The GAIA Kernel acts as an Operating System. It provides and monitors all resources required by the agent.
+* **Managed State**: If an agent requires persistent memory, it must utilize the Kernel-provided `Agent State API`.
+* **Auditability**: This ensures the Kernel has total visibility into the data an agent is storing, and retains the ability to instantly wipe an agent's memory if it is blacklisted.
+
+---
+
 ## 6. Planning & Dispatching
 
 ### 6.1 Planner Inputs

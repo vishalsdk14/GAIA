@@ -34,6 +34,12 @@ The kernel manages state across three distinct tiers to balance fast resolution 
 * **Usage**: Long-term agent memory across tasks.
 * **Scope**: Cross-task history.
 
+### 1.4 Tier 4: Managed Agent State (Isolated)
+* **Medium**: Persistent Document/Key-Value Store (hosted by the Kernel).
+* **Format**: Arbitrary JSON (Agent-defined).
+* **Usage**: Persistent memory for stateful agents. Agents use the Kernel's `Agent State API` to store data rather than provisioning external "shadow" databases.
+* **Scope**: Strictly mathematically partitioned by `agent_id`. Agent A cannot read Agent B's state.
+
 ---
 
 ## 2. Active State Schema (Tier 1)
