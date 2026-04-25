@@ -15,6 +15,7 @@
 package logger
 
 import (
+	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -36,22 +37,24 @@ type AuditEntry struct {
 	PrevHash  string                 `json:"prev_hash"`
 }
 
-// AuditLogger implements a tamper-proof, append-only audit log with SHA-256 chaining.
+// AuditLogger implements a tamper-proof, append-only audit log with HMAC-SHA256 chaining.
 type AuditLogger struct {
 	mu       sync.Mutex
 	filePath string
 	lastHash string
+	secret   []byte
 }
 
 var globalAudit *AuditLogger
 var auditOnce sync.Once
 
-// InitAuditLogger initializes the global audit log file.
-func InitAuditLogger(path string) (*AuditLogger, error) {
+// InitAuditLogger initializes the global audit log file with a secret for HMAC signing.
+func InitAuditLogger(path string, secret []byte) (*AuditLogger, error) {
 	auditOnce.Do(func() {
 		globalAudit = &AuditLogger{
 			filePath: path,
 			lastHash: "0000000000000000000000000000000000000000000000000000000000000000",
+			secret:   secret,
 		}
 	})
 	return globalAudit, nil
@@ -72,11 +75,11 @@ func (a *AuditLogger) Log(actor, action, resource string, context map[string]int
 		PrevHash:  a.lastHash,
 	}
 
-	// Calculate Hash: SHA-256(Timestamp + Actor + Action + Resource + PrevHash)
+	// Calculate HMAC: HMAC-SHA256(Timestamp + Actor + Action + Resource + PrevHash) using the system secret
 	payload := fmt.Sprintf("%s|%s|%s|%s|%s", entry.Timestamp.Format(time.RFC3339), entry.Actor, entry.Action, entry.Resource, entry.PrevHash)
-	h := sha256.New()
-	h.Write([]byte(payload))
-	entry.Hash = hex.EncodeToString(h.Sum(nil))
+	mac := hmac.New(sha256.New, a.secret)
+	mac.Write([]byte(payload))
+	entry.Hash = hex.EncodeToString(mac.Sum(nil))
 
 	// Update chain
 	a.lastHash = entry.Hash
@@ -99,4 +102,53 @@ func (a *AuditLogger) Log(actor, action, resource string, context map[string]int
 // GetAuditLogger returns the singleton instance.
 func GetAuditLogger() *AuditLogger {
 	return globalAudit
+}
+
+/**
+ * VerifyChain reads the audit log file and validates every HMAC-SHA256 link in the chain.
+ * It returns an error if any entry has an invalid hash or if the PrevHash link is broken.
+ */
+func (a *AuditLogger) VerifyChain() error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	f, err := os.Open(a.filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil // No logs to verify yet
+		}
+		return err
+	}
+	defer f.Close()
+
+	var lastHash = "0000000000000000000000000000000000000000000000000000000000000000"
+	decoder := json.NewDecoder(f)
+
+	for decoder.More() {
+		var entry AuditEntry
+		if err := decoder.Decode(&entry); err != nil {
+			return fmt.Errorf("audit: failed to decode entry: %w", err)
+		}
+
+		// Verify Link
+		if entry.PrevHash != lastHash {
+			return fmt.Errorf("audit: chain broken at entry %s (expected prev %s, got %s)", entry.LogID, lastHash, entry.PrevHash)
+		}
+
+		// Verify Signature
+		payload := fmt.Sprintf("%s|%s|%s|%s|%s", entry.Timestamp.Format(time.RFC3339), entry.Actor, entry.Action, entry.Resource, entry.PrevHash)
+		mac := hmac.New(sha256.New, a.secret)
+		mac.Write([]byte(payload))
+		expectedHash := hex.EncodeToString(mac.Sum(nil))
+
+		if entry.Hash != expectedHash {
+			return fmt.Errorf("audit: signature mismatch at entry %s (tampered content or invalid secret)", entry.LogID)
+		}
+
+		lastHash = entry.Hash
+	}
+
+	// Update the logger's state to match the file
+	a.lastHash = lastHash
+	return nil
 }

@@ -16,6 +16,7 @@ package api
 
 import (
 	"encoding/json"
+	"gaia/kernel/pkg/types"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"

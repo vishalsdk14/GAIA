@@ -219,11 +219,11 @@ For detailed setup instructions, visit the [Documentation Site](docs/site/docs/i
 - [x] Policy-based data encryption at rest
 - [x] Secret management integration
 
-### Phase 9: Observability & Human-in-the-Loop (HITL)
-- [ ] Real-time DAG visualization (Dashboard)
-- [ ] `STEP_APPROVAL_REQUIRED` flow implementation
-- [ ] Agent health & trust score monitoring dashboard
-- [ ] Manual override & plan modification interface
+### Phase 9: Observability & Human-in-the-Loop (HITL) (Complete)
+- [x] Real-time DAG visualization (Dashboard)
+- [x] `STEP_APPROVAL_REQUIRED` flow implementation
+- [x] Agent health & trust score monitoring dashboard
+- [x] Manual override & plan modification interface
 
 ### Phase 10: Enterprise Governance & Auditing
 - [ ] Cryptographic Audit Log chaining (SHA-256)

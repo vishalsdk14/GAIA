@@ -66,9 +66,17 @@ func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		PRIMARY KEY (agent_id, state_key)
+	);
+	
+	CREATE TABLE IF NOT EXISTS agent_state_history (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		agent_id TEXT NOT NULL,
+		state_key TEXT NOT NULL,
+		state_data JSON NOT NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);`
 	if _, err := db.Exec(query); err != nil {
-		return nil, fmt.Errorf("state: failed to create agent_state table: %w", err)
+		return nil, fmt.Errorf("state: failed to create tables: %w", err)
 	}
 
 	return &SQLiteStore{DB: db}, nil
@@ -125,6 +133,12 @@ func (s *SQLiteStore) Put(agentID string, key string, data interface{}, manifest
 	}
 
 	_, err = s.DB.Exec(query, agentID, key, finalData)
+	if err != nil {
+		return err
+	}
+
+	// Phase 10: Record history for restoration support
+	_, err = s.DB.Exec(`INSERT INTO agent_state_history (agent_id, state_key, state_data) VALUES (?, ?, ?)`, agentID, key, finalData)
 	return err
 }
 
@@ -209,4 +223,30 @@ func (s *SQLiteStore) GetUsage(agentID string) (int, error) {
 		return 0, fmt.Errorf("state: failed to check usage: %w", err)
 	}
 	return currentSize, nil
+}
+
+/**
+ * RestoreAgentState rolls back an agent's namespace to the latest state available before the targetTime.
+ * This is an administrative operation that ensures business continuity.
+ */
+func (s *SQLiteStore) RestoreAgentState(agentID string, targetTime string) error {
+	// 1. Delete current state for the agent
+	if err := s.DeleteNamespace(agentID); err != nil {
+		return err
+	}
+
+	// 2. Reconstruct state from history: find the latest entry for each key <= targetTime
+	query := `
+	INSERT INTO agent_state (agent_id, state_key, state_data, updated_at)
+	SELECT h.agent_id, h.state_key, h.state_data, h.created_at
+	FROM agent_state_history h
+	WHERE h.agent_id = ? AND h.created_at <= ?
+	AND h.id IN (
+		SELECT MAX(id) FROM agent_state_history 
+		WHERE agent_id = ? AND created_at <= ?
+		GROUP BY state_key
+	);`
+
+	_, err := s.DB.Exec(query, agentID, targetTime, agentID, targetTime)
+	return err
 }

@@ -534,7 +534,7 @@ func (c *Coordinator) UpdatePlan(newPlan []types.Step) error {
 
 	for _, newStep := range newPlan {
 		if currentStatus, exists := statusMap[newStep.StepID]; exists {
-			if (currentStatus == types.StepStatusDone || currentStatus == types.StepStatusExecuting) && 
+			if (currentStatus == types.StepStatusDone || currentStatus == types.StepStatusRunning) && 
 				newStep.Status != currentStatus {
 				return fmt.Errorf("coordinator: cannot modify status of step %s (currently %s)", newStep.StepID, currentStatus)
 			}

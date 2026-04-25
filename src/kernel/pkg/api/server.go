@@ -83,6 +83,14 @@ func (s *Server) setupRoutes() {
 
 		// Real-time Streaming
 		r.Get("/stream", s.handleStream)
+
+		// Admin & Governance (Phase 10)
+		r.Group(func(r chi.Router) {
+			r.Use(s.adminOnly)
+			r.Get("/admin/audit-logs", s.handleListAuditLogs)
+			r.Post("/admin/audit/verify", s.handleVerifyAuditIntegrity)
+			r.Post("/admin/agents/{agentID}/restore", s.handleRestoreAgentState)
+		})
 	})
 
 	s.router.Route("/internal/v1", func(r chi.Router) {
@@ -93,6 +101,20 @@ func (s *Server) setupRoutes() {
 			r.Put("/{key}", s.handlePutState)
 			r.Delete("/{key}", s.handleDeleteState)
 		})
+	})
+}
+
+// adminOnly is a placeholder middleware for Admin API protection.
+// In Phase 10, this should check for GAIA_ADMIN_TOKEN or specific JWT claims.
+func (s *Server) adminOnly(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		token := r.Header.Get("X-GAIA-Admin-Token")
+		adminToken := os.Getenv("GAIA_ADMIN_TOKEN")
+		if adminToken != "" && token != adminToken {
+			http.Error(w, "Forbidden: Admin access required", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
 	})
 }
 

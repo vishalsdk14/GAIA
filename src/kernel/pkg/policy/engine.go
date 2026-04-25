@@ -33,6 +33,8 @@ func NewPolicyEngine() (*PolicyEngine, error) {
 		cel.Variable("step", cel.MapType(cel.StringType, cel.AnyType)),
 		cel.Variable("agent", cel.MapType(cel.StringType, cel.AnyType)),
 		cel.Variable("capability", cel.MapType(cel.StringType, cel.AnyType)),
+		cel.Variable("usage", cel.MapType(cel.StringType, cel.AnyType)),
+		cel.Variable("cost", cel.MapType(cel.StringType, cel.AnyType)),
 		cel.Variable("env", cel.StringType),
 	)
 	if err != nil {

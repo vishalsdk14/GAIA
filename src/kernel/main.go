@@ -31,9 +31,19 @@ func main() {
 	// Initialize structured logging
 	logger.Init(config.LogLevel)
 
-	// Initialize tamper-proof Audit Logger
-	if _, err := logger.InitAuditLogger(config.AuditLogPath); err != nil {
+	// 5. Initialize Secret Registry (Phase 8) - Moved up for Audit & Encryption
+	secrets := core.NewSecretRegistry()
+
+	// Initialize tamper-proof Audit Logger (Phase 10: HMAC-SHA256)
+	auditSecret, _ := secrets.GetSecret("AUDIT_SECRET")
+	if al, err := logger.InitAuditLogger(config.AuditLogPath, []byte(auditSecret)); err != nil {
 		log.Printf("Warning: Failed to initialize audit log: %v\n", err)
+	} else {
+		// Phase 10: Verify chain integrity on startup
+		if err := al.VerifyChain(); err != nil {
+			log.Fatalf("CRITICAL: Audit log integrity check failed: %v. The system may have been tampered with.", err)
+		}
+		logger.L.Info("Audit log integrity verified (HMAC-SHA256)")
 	}
 
 	logger.L.Info("GAIA Orchestration Kernel initializing...", 
@@ -62,9 +72,6 @@ func main() {
 
 	// 4. Initialize Orchestrator (Goal Manager)
 	orch := core.NewOrchestrator(config, reg, taskStore, planner, transport)
-
-	// 5. Initialize Secret Registry (Phase 8)
-	secrets := core.NewSecretRegistry()
 
 	// 6. Initialize & Start API Gateway
 	server := api.NewServer(orch, reg, store)
