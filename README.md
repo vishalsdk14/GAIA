@@ -134,7 +134,7 @@ GAIA natively consumes **Google A2A** (agent-to-agent) and **Anthropic MCP** (ag
 | Component Specifications | ✅ Complete | 12 detailed documents covering schemas, control loops, and security |
 | Tech Stack Decision | ✅ Complete | Polyglot architecture (Go Core, TS/Python SDKs, Rust modules) |
 | Repository Scaffolding | ✅ Complete | Modular monorepo with production Go kernel structure |
-| Core Implementation (Code) | ✅ Complete | Phases 1-4 implemented; Kernel core is feature-complete |
+| Core Implementation (Code) | ✅ Complete | Phases 1-6 implemented; API Gateway and Security live |
 
 ---
 
@@ -190,12 +190,34 @@ This will create the following isolated modules:
 - [x] MCP Adapter
 - [x] A2A Adapter
 
-### Phase 4: Production Readiness (Complete)
-- [x] Policy Engine & sandbox enforcement (CEL-based)
-- [x] Observability (structured logs, Event Bus)
-- [x] Failure Handling (retries, escalation, circuit breakers)
+### Phase 4: Resiliency & Persistence (Complete)
+- [x] Exponential backoff & jitter logic
+- [x] 4-tier escalation path (Retry -> Fallback -> Replan -> Abort)
+- [x] Tier 2 Task Persistence (Stateful re-entry)
+- [x] Multi-tenant SQLite store refactor
+
+### Phase 5: Security & Policy (Complete)
+- [x] CEL-based Policy Engine implementation
+- [x] JSON Schema contract enforcement
+- [x] Tier 5 Audit Log (Tamper-proof SHA-256 chaining)
+- [x] Environment-based policy injection
+
+### Phase 6: Client API & Gateway (Complete)
+- [x] RESTful Task Management API
+- [x] WebSocket Event Streaming (Real-time observability)
+- [x] Orchestrator (Goal Manager) implementation
+- [x] Multi-protocol transport routing (A2A, MCP, Native)
+
+### Phase 7: SDKs & Ecosystem (Next)
+- [ ] TypeScript SDK (libs/sdk-ts)
+- [ ] Python SDK (libs/sdk-py)
+- [ ] Documentation site (Docusaurus/Hugo)
 - [ ] Stress testing & failure injection
-- [ ] Documentation site
+
+### Phase 8: GAIA Dashboard (Future)
+- [ ] Real-time DAG visualization
+- [ ] Agent health & trust score monitoring
+- [ ] Manual approval interface (HITL)
 
 ---
 
