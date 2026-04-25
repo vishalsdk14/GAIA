@@ -15,7 +15,11 @@
 package core
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"time"
 	"gaia/kernel/pkg/types"
 )
 
@@ -31,36 +35,135 @@ type Planner interface {
 // LocalLLMPlanner is an adapter for locally hosted LLM engines like Ollama or Llama.cpp.
 type LocalLLMPlanner struct {
 	Endpoint string
+	Model    string
 }
 
-// GeneratePlan for LocalLLMPlanner will eventually implement the specific JSON
-// prompting and parsing logic for local models.
+// GeneratePlan for LocalLLMPlanner implements the Ollama API (/api/generate) to fetch a JSON plan.
 func (p *LocalLLMPlanner) GeneratePlan(goal string, state map[string]interface{}, capabilities []types.Capability) (*types.PlanRecord, error) {
-	// TODO: Implement Phase 3 (Runtime) network logic for Ollama/Local LLM.
-	return nil, fmt.Errorf("core: local planner not yet implemented in foundation phase")
+	userPrompt, err := BuildUserPrompt(goal, state, capabilities)
+	if err != nil {
+		return nil, err
+	}
+
+	reqBody := map[string]interface{}{
+		"model":  p.Model,
+		"system": SystemPrompt,
+		"prompt": userPrompt,
+		"stream": false,
+		"format": "json",
+	}
+
+	bodyBytes, _ := json.Marshal(reqBody)
+	req, err := http.NewRequest("POST", p.Endpoint, bytes.NewBuffer(bodyBytes))
+	if err != nil {
+		return nil, fmt.Errorf("core: failed to create ollama request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 60 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("core: %w: ollama request failed: %v", fmt.Errorf(string(types.ErrorCodeInternalError)), err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("core: ollama returned status %d", resp.StatusCode)
+	}
+
+	var ollamaResp struct {
+		Response string `json:"response"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&ollamaResp); err != nil {
+		return nil, fmt.Errorf("core: failed to decode ollama response: %w", err)
+	}
+
+	return parsePlanJSON(ollamaResp.Response)
 }
 
 // CloudLLMPlanner is an adapter for managed cloud providers like OpenAI or Anthropic.
 type CloudLLMPlanner struct {
 	Endpoint string
+	Model    string
 	APIKey   string
 }
 
-// GeneratePlan for CloudLLMPlanner will eventually implement the specific
-// chat-completion API logic for cloud providers.
+// GeneratePlan for CloudLLMPlanner implements the OpenAI chat completions API.
 func (p *CloudLLMPlanner) GeneratePlan(goal string, state map[string]interface{}, capabilities []types.Capability) (*types.PlanRecord, error) {
-	// TODO: Implement Phase 3 (Runtime) network logic for OpenAI/Anthropic.
-	return nil, fmt.Errorf("core: cloud planner not yet implemented in foundation phase")
+	userPrompt, err := BuildUserPrompt(goal, state, capabilities)
+	if err != nil {
+		return nil, err
+	}
+
+	reqBody := map[string]interface{}{
+		"model": p.Model,
+		"messages": []map[string]string{
+			{"role": "system", "content": SystemPrompt},
+			{"role": "user", "content": userPrompt},
+		},
+		"response_format": map[string]string{"type": "json_object"},
+	}
+
+	bodyBytes, _ := json.Marshal(reqBody)
+	req, err := http.NewRequest("POST", p.Endpoint, bytes.NewBuffer(bodyBytes))
+	if err != nil {
+		return nil, fmt.Errorf("core: failed to create openai request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+p.APIKey)
+
+	client := &http.Client{Timeout: 60 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("core: %w: openai request failed: %v", fmt.Errorf(string(types.ErrorCodeInternalError)), err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("core: openai returned status %d", resp.StatusCode)
+	}
+
+	var openaiResp struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&openaiResp); err != nil {
+		return nil, fmt.Errorf("core: failed to decode openai response: %w", err)
+	}
+
+	if len(openaiResp.Choices) == 0 {
+		return nil, fmt.Errorf("core: openai returned zero choices")
+	}
+
+	return parsePlanJSON(openaiResp.Choices[0].Message.Content)
 }
 
-// NewPlanner is a factory function that injects the correct planner implementation
-// based on the dynamic KernelConfig. This ensures zero hardcoded logic.
+// parsePlanJSON is a helper to unmarshal the raw JSON string from the LLM into a PlanRecord.
+func parsePlanJSON(raw string) (*types.PlanRecord, error) {
+	var record types.PlanRecord
+	if err := json.Unmarshal([]byte(raw), &record); err != nil {
+		return nil, fmt.Errorf("core: %w: failed to parse llm json: %v", fmt.Errorf(string(types.ErrorCodeSchemaViolation)), err)
+	}
+	
+	// Default statuses for new steps
+	for i := range record.Steps {
+		record.Steps[i].Status = types.StepStatusPending
+	}
+	record.Status = types.PlanStatusValid
+	
+	return &record, nil
+}
+
+// NewPlanner is a factory function that injects the correct planner implementation.
 func NewPlanner(config *KernelConfig) (Planner, error) {
 	switch config.PlannerProvider {
 	case LLMProviderLocal:
-		return &LocalLLMPlanner{Endpoint: config.PlannerEndpoint}, nil
+		return &LocalLLMPlanner{Endpoint: config.PlannerEndpoint, Model: config.PlannerModel}, nil
 	case LLMProviderCloud:
-		return &CloudLLMPlanner{Endpoint: config.PlannerEndpoint, APIKey: config.PlannerAPIKey}, nil
+		return &CloudLLMPlanner{Endpoint: config.PlannerEndpoint, Model: config.PlannerModel, APIKey: config.PlannerAPIKey}, nil
 	default:
 		return nil, fmt.Errorf("core: unsupported planner provider: %s", config.PlannerProvider)
 	}

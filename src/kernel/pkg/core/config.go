@@ -36,6 +36,9 @@ type KernelConfig struct {
 	// PlannerEndpoint is the URL for the LLM API.
 	PlannerEndpoint string `json:"planner_endpoint"`
 	
+	// PlannerModel is the specific model to use.
+	PlannerModel string `json:"planner_model"`
+	
 	// PlannerAPIKey is the secret used for authenticating with cloud LLM providers.
 	PlannerAPIKey string `json:"planner_api_key,omitempty"`
 	
@@ -54,6 +57,7 @@ func DefaultConfig() *KernelConfig {
 	return &KernelConfig{
 		PlannerProvider:    LLMProviderLocal,
 		PlannerEndpoint:    "http://localhost:11434/api/generate", // Default Ollama endpoint
+		PlannerModel:       "llama3",
 		MaxReplans:         2,
 		MaxConcurrentTasks: 10,
 		DBPath:             "./data/gaia_state.db",
