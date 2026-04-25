@@ -218,10 +218,23 @@ For detailed setup instructions, visit the [Documentation Site](docs/site/docs/i
 - [ ] Policy-based data encryption at rest
 - [ ] Secret management integration
 
-### Phase 8: GAIA Dashboard (Future)
-- [ ] Real-time DAG visualization
-- [ ] Agent health & trust score monitoring
-- [ ] Manual approval interface (HITL)
+### Phase 9: Observability & Human-in-the-Loop (HITL)
+- [ ] Real-time DAG visualization (Dashboard)
+- [ ] `STEP_APPROVAL_REQUIRED` flow implementation
+- [ ] Agent health & trust score monitoring dashboard
+- [ ] Manual override & plan modification interface
+
+### Phase 10: Enterprise Governance & Auditing
+- [ ] Cryptographic Audit Log chaining (SHA-256)
+- [ ] Admin API for log querying & agent restoration
+- [ ] Advanced CEL-based policy management (Cost control, regional routing)
+- [ ] Tamper-proof event persistence
+
+### Phase 11: High-Performance & Hybrid Routing
+- [ ] Zero-allocation JSON interpolation engine
+- [ ] Hybrid routing (Local IPC path vs. Remote gRPC/HTTP path)
+- [ ] Multi-tenant resource quotas & memory pressure handling
+- [ ] Kernel-level performance profiling & optimizations
 
 ---
 
@@ -230,53 +243,33 @@ For detailed setup instructions, visit the [Documentation Site](docs/site/docs/i
 ```text
 GAIA/
 ├── docs/
+│   ├── site/                      # Docusaurus documentation site
 │   ├── design.md                  # Master technical specification
 │   ├── specs/                     # Component-level specifications
-│   │   ├── schemas.md             # JSON Schema definitions
+│   │   ├── schemas/               # Canonical JSON Schemas (Source of Truth)
+│   │   ├── schemas.md             # Schema definitions & contracts
 │   │   ├── lifecycles.md          # State machines (Task, Step, Agent)
 │   │   ├── control-loop.md        # Authoritative control loop
-│   │   ├── communication.md       # Messages, events, routing
-│   │   ├── registry.md            # Capability Registry
-│   │   ├── planning.md            # Planner & interpolation engine
-│   │   ├── state-management.md    # Tiered state & snapshotting
-│   │   ├── failure-handling.md    # Retries, escalation, circuit breakers
-│   │   ├── security.md            # Policy engine & sandbox
-│   │   ├── transport.md           # Transport layer & adapters
-│   │   └── client-api.md          # REST API & streaming
-│   ├── protocols/                 # Protocol integrations
-│   │   ├── a2a-integration.md     # Google A2A
-│   │   ├── mcp-integration.md     # Anthropic MCP
-│   │   └── native-protocol.md     # GAIA native protocol
-│   ├── guides/                    # User & developer guides
-│   │   ├── getting-started.md
-│   │   ├── building-agents.md
-│   │   ├── building-adapters.md
-│   │   ├── deployment.md
-│   │   └── configuration.md
-│   ├── reference/                 # Reference materials
-│   │   ├── glossary.md
-│   │   ├── error-codes.md
-│   │   └── event-catalog.md
-│   └── rfcs/                      # Design proposals
-│       └── 000-template.md
+│   │   └── ...                    # (Policy, Planning, Registry, Security)
+│   └── protocols/                 # Protocol integration specs (A2A, MCP)
 ├── src/
 │   └── kernel/                    # Go Orchestration Kernel
+│       ├── cmd/
+│       │   └── schema-gen/        # Type-sync tool (Go -> JSON Schema)
 │       ├── pkg/
-│       │   ├── api/               # REST Handlers & WebSocket Stream
-│       │   ├── core/              # Coordinator, Orchestrator, Planner
-│       │   ├── policy/            # CEL Engine & Schema Validator
+│       │   ├── api/               # REST Handlers & WebSocket Handshake
+│       │   ├── core/              # Loop, Planner, Scheduler, Transports
+│       │   ├── policy/            # CEL Policy Engine & Enforcement
 │       │   ├── state/             # Tiered Persistence (SQLite)
-│       │   ├── registry/          # Capability Registry & Routing
-│       │   ├── types/             # Canonical Kernel Schemas
-│       │   ├── logger/            # Structured Logs & Audit Trail
-│       │   └── common/            # Event Bus & Shared Utilities
-│       ├── main.go                # Kernel Entry Point
-│       └── go.mod                 # Go dependencies
+│       │   ├── registry/          # Capability Registry & Agent Discovery
+│       │   └── types/             # Canonical Kernel Structs
+│       └── main.go                # Kernel Entry Point
 ├── libs/                          # SDKs & Ecosystem
 │   ├── sdk-ts/                    # TypeScript SDK (axios + ws)
 │   └── sdk-py/                    # Python SDK (httpx + websockets)
-├── docs/
-│   ├── site/                      # Docusaurus documentation site
+├── scripts/                       # DevOps & CLI
+│   └── gaia/                      # Unified CLI & validation scripts
+├── gaia                           # Unified CLI Entry Point (Symlink)
 ├── CHANGELOG.md
 ├── CODE_OF_CONDUCT.md
 ├── CONTRIBUTING.md
