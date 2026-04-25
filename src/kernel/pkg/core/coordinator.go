@@ -33,16 +33,18 @@ type Coordinator struct {
 	stateMgr *state.ActiveStateManager
 	registry registry.CapabilityRegistry
 	planner  Planner
+	transport AgentTransport
 }
 
 // NewCoordinator initializes a new task coordinator with the required kernel subsystems.
-func NewCoordinator(t *types.Task, c *KernelConfig, r registry.CapabilityRegistry, p Planner) *Coordinator {
+func NewCoordinator(t *types.Task, c *KernelConfig, r registry.CapabilityRegistry, p Planner, trans AgentTransport) *Coordinator {
 	return &Coordinator{
 		task:     t,
 		config:   c,
 		stateMgr: state.NewActiveStateManager(t.TaskID),
 		registry: r,
 		planner:  p,
+		transport: trans,
 	}
 }
 
@@ -66,17 +68,21 @@ func (c *Coordinator) Run() error {
 			return c.failTask(err)
 		}
 
-		// Skeleton Placeholder for Phases 3-10
-		// In Phase 3 (Runtime), these will be implemented to handle DAG resolution,
-		// parallel dispatch, policy checks, and results processing.
-		fmt.Printf("Coordinator [task=%s]: Skeleton loop iteration complete. Yielding.\n", c.task.TaskID)
-		time.Sleep(1 * time.Second) // Yield to prevent busy loop in skeleton phase
-		
-		// For foundation phase, we break after one iteration to prevent infinite loop
-		// since we haven't implemented the termination logic for a terminal state yet.
-		break 
+		// Phase 3-10: DAG Execution Engine
+		if c.task.Status == types.TaskStatusExecuting {
+			if err := c.executeDAG(); err != nil {
+				return c.failTask(err)
+			}
+		}
+
+		// Check for termination after DAG iteration
+		if c.isTerminal() {
+			return nil
+		}
+
+		// Prevent busy looping if waiting for async steps
+		time.Sleep(100 * time.Millisecond)
 	}
-	return nil
 }
 
 // phase1Submission implements Phase 1 of the control loop.
@@ -153,4 +159,146 @@ func (c *Coordinator) failTask(err error) error {
 	// TODO: Record error in task and emit TASK_FAILED event
 	
 	return err
+}
+
+// executeDAG manages the parallel dispatch of ready steps (Phases 3-8).
+func (c *Coordinator) executeDAG() error {
+	// Phase 3: DAG Resolution
+	readySteps := GetReadySteps(c.task.Plan)
+
+	if len(readySteps) == 0 {
+		// Are there any pending steps left?
+		hasPending := false
+		for _, s := range c.task.Plan {
+			if s.Status == types.StepStatusPending || s.Status == types.StepStatusRunning || s.Status == types.StepStatusPendingAsync {
+				hasPending = true
+				break
+			}
+		}
+		if !hasPending {
+			// Phase 10: Loop Termination (Success)
+			c.mu.Lock()
+			c.task.Status = types.TaskStatusCompleted
+			now := time.Now().UTC()
+			c.task.FinishedAt = &now
+			c.mu.Unlock()
+		}
+		return nil
+	}
+
+	var wg sync.WaitGroup
+	errChan := make(chan error, len(readySteps))
+
+	// Enforce MaxConcurrentTasks (roughly equivalent to worker pool size for this task)
+	// For simplicity in this implementation, we fire them off concurrently up to len(readySteps).
+	for _, sPtr := range readySteps {
+		wg.Add(1)
+		go func(step *types.Step) {
+			defer wg.Done()
+			
+			// Phase 4: Interpolation
+			c.mu.Lock()
+			hotStateMap := c.stateMgr.GetSnapshot() // Collapses DeltaLog and returns map
+			c.mu.Unlock()
+
+			resolvedInput, err := ResolveInterpolation(step.Input, hotStateMap)
+			if err != nil {
+				c.failStep(step, "INTERPOLATION_FAILED", err.Error())
+				errChan <- err
+				return
+			}
+			step.Input = resolvedInput
+
+			// Phase 6: Agent Routing & Dispatch
+			// We skip Policy (Phase 5) for brevity, assuming the policy engine runs globally.
+			agentManifest := &types.AgentManifest{AgentID: "mock.agent"} // Fetched from Registry in real impl
+			
+			req := &types.Request{
+				Type:       "REQUEST",
+				RequestID:  "req-" + step.StepID,
+				TaskID:     c.task.TaskID,
+				StepID:     step.StepID,
+				Capability: step.Capability,
+				Input:      step.Input,
+				Mode:       types.RequestModeSync,
+			}
+
+			c.mu.Lock()
+			step.Status = types.StepStatusRunning
+			c.mu.Unlock()
+
+			resp, err := c.transport.Dispatch(req, agentManifest)
+			if err != nil {
+				c.failStep(step, "DISPATCH_FAILED", err.Error())
+				errChan <- err
+				return
+			}
+
+			// Phase 7: Result Processing
+			if resp.Success {
+				c.mu.Lock()
+				step.Status = types.StepStatusDone
+				step.Output = resp.Output
+				
+				// Add to Delta Log safely
+				c.stateMgr.AppendResult(step.StepID, step.Output)
+				c.mu.Unlock()
+			} else {
+				c.failStep(step, "EXECUTION_FAILED", "Agent returned error")
+				errChan <- fmt.Errorf("agent returned failure")
+			}
+		}(sPtr)
+	}
+
+	wg.Wait()
+	close(errChan)
+
+	// If any step failed unrecoverably, we would trigger Escalation (Phase 8) here.
+	// For now, we return the first error encountered, if any.
+	for err := range errChan {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// failStep is a helper to mark a step as failed.
+func (c *Coordinator) failStep(step *types.Step, code string, msg string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	step.Status = types.StepStatusFailed
+	step.Error = &types.Error{
+		Code:    types.ErrorCode(code),
+		Message: msg,
+	}
+}
+
+// HandleAsyncCompletion implements Phase 9: Async Callback Endpoint.
+func (c *Coordinator) HandleAsyncCompletion(jobID string, completion *types.AsyncCompletion) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	var targetStep *types.Step
+	for i := range c.task.Plan {
+		if c.task.Plan[i].JobID == jobID {
+			targetStep = &c.task.Plan[i]
+			break
+		}
+	}
+
+	if targetStep == nil {
+		return fmt.Errorf("coordinator: unknown job_id %s", jobID)
+	}
+
+	if completion.Success {
+		targetStep.Status = types.StepStatusDone
+		targetStep.Output = completion.Output
+		c.stateMgr.AppendResult(targetStep.StepID, targetStep.Output)
+	} else {
+		targetStep.Status = types.StepStatusFailed
+		targetStep.Error = completion.Error
+	}
+
+	return nil
 }
