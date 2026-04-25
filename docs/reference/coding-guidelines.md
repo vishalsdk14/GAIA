@@ -24,6 +24,19 @@ The "Hot Path" includes: Phase 5 (Policy Evaluation), Phase 6 (Interpolation), a
 * **JSON Traversal**: Do **not** unmarshal JSON for interpolation. Use `tidwall/gjson` to scan raw byte slices.
 * **Lock Granularity**: Never hold a global state lock during an I/O operation (e.g., calling an agent). Release locks before making network calls.
 
+### 1.4 Zero Magic Numbers
+* **Rule**: Literal values (e.g., `60`, `15000`, `0.9`) are strictly forbidden in the business logic.
+* **Why**: All architectural limits, timeouts, retry counts, and status strings must be centralized to ensure the system is tunable and self-documenting.
+* **Implementation**:
+    - Use `const` blocks for all internal limits and status strings.
+    - Use the `reference/` directory as the source of truth for all Enums and Error Codes.
+    - Any value that may need to be tuned by an operator must be moved to the Kernel Configuration manifest.
+
+### 1.5 Radical Modularity & DRY
+* **No Monoliths**: Large, single-file implementations are strictly forbidden. The kernel must be decomposed into small, single-responsibility files and packages.
+* **DRY (Don't Repeat Yourself)**: Zero tolerance for code duplication. Common logic (e.g., JSON traversal, error wrapping, event emission) must be abstracted into internal utility packages.
+* **Package Isolation**: Each of the 10 phases of the Control Loop should ideally reside in its own package or sub-package to enforce clean boundaries and prevent circular dependencies.
+
 ---
 
 ## 2. Agent SDKs (Polyglot)
