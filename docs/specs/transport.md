@@ -1,95 +1,77 @@
 # Transport Layer Specification
 
-> **Status**: 🔲 Not Started
+> **Status**: 🟢 Complete
 >
-> **Source**: [design.md — Sections 7, 15, 21.4](../design.md)
+> **Source**: [design.md — Sections 3, 11](../design.md)
 
 ---
 
 ## Purpose
 
-This document specifies the **Transport Layer** — the abstraction that makes agent invocation uniform regardless of whether the agent is local (IPC), remote (HTTP/gRPC), A2A-compatible, or MCP-compatible. It defines the adapter interface, routing logic, and protocol-specific wire formats.
+The Transport Layer acts as the physical bridge between the GAIA Kernel and external Agents. This specification defines how abstract `Request` and `Response` objects (defined in schemas.md) are serialized and transmitted over various network and inter-process protocols.
 
 ---
 
-## Sections to Define
+## 1. Supported Transport Protocols
 
-### 1. Transport Abstraction Interface
+The GAIA Kernel is transport-agnostic, supporting multiple protocols to accommodate different agent architectures ranging from lightweight local scripts to massive remote clusters.
 
-* `invoke(agent, payload) → Response`
-* How the Transport Layer selects the correct adapter
-* Protocol resolution from `agent.protocol` field
+### 1.1 HTTP/REST (`transport: "http"`)
+* **Wire Format**: JSON payloads over HTTP/1.1 or HTTP/2.
+* **Request Mapping**: Kernel sends an `HTTP POST` to the agent's `endpoint`. The `Request` JSON is the request body.
+* **Response Mapping**: Agent responds with HTTP 200 OK. The `Response` JSON is the response body.
+* **Timeouts**: Enforced via standard HTTP client timeouts. If the connection drops before HTTP 200, the step fails with `TIMEOUT`.
 
----
+### 1.2 gRPC (`transport: "grpc"`)
+* **Wire Format**: Protobuf over HTTP/2.
+* **Request/Response Mapping**: The kernel dynamically translates the JSON schema into a generic Protobuf payload:
+  ```protobuf
+  rpc Invoke (InvokeRequest) returns (InvokeResponse);
+  ```
+  *(Note: The exact protobuf definitions will be provided in a future `gaia.proto` file).*
+* **Best For**: High-throughput, low-latency remote capabilities.
 
-### 2. Native Adapter
+### 1.3 WebSocket (`transport: "websocket"`)
+* **Wire Format**: JSON strings or binary MessagePack over WSS.
+* **Mapping**: A persistent bi-directional connection. The Kernel pushes the `Request` frame. The Agent pushes the `Response` frame asynchronously.
+* **Connection Lifecycle**: 
+  * Requires a Ping/Pong keep-alive every 30 seconds.
+  * If the socket closes abruptly, all pending steps assigned to the agent are marked `failed`.
 
-* Local transport: direct function call / IPC
-* Remote transport: HTTP POST / gRPC call
-* Wire format (GAIA's internal JSON schema)
-* Timeout handling
-
----
-
-### 3. A2A Adapter
-
-* See [A2A Integration](../protocols/a2a-integration.md) for full protocol details
-* JSON-RPC 2.0 methods: `message/send`, `message/stream`, `tasks/get`, `tasks/cancel`
-* Agent Card → Manifest translation
-* A2A Artifact → GAIA Response normalization
-
----
-
-### 4. MCP Adapter
-
-* See [MCP Integration](../protocols/mcp-integration.md) for full protocol details
-* JSON-RPC 2.0 methods: `tools/call`, `tools/list`, `resources/read`
-* MCP Tool → GAIA Capability translation
-* MCP content → GAIA Response normalization
+### 1.4 Inter-Process Communication (`transport: "ipc"`)
+* **Wire Format**: JSON over Unix Domain Sockets (`unix://...`) or Windows Named Pipes (`\\.\pipe\...`).
+* **Usage**: Used strictly for locally deployed agents running on the same host as the kernel.
+* **Benefit**: Zero network latency. The Dispatcher applies a `+10%` transport bonus for IPC agents.
 
 ---
 
-### 5. Adapter Interface Contract
+## 2. Integration Protocols (Dialects)
 
-* Every adapter must implement:
-  * `discover(url) → Manifest` — discover agent capabilities
-  * `invoke(agent, payload) → Response` — send a request
-  * `cancel(agent, step_id) → void` — cancel an in-flight step (best-effort)
-  * `health(agent) → HealthStatus` — check agent health
+While the Transport determines *how* bits are moved, the Integration Protocol (`protocol` field in AgentManifest) determines the semantic wrapping.
+
+### 2.1 Native Protocol (`protocol: "native"`)
+Agents explicitly designed for GAIA. They speak the exact JSON schemas defined in `schemas.md` natively without translation.
+
+### 2.2 Agent-to-Agent (A2A) (`protocol: "a2a"`)
+Standardized external agents. The kernel injects an adapter layer that translates GAIA `Request` schemas into the standard A2A Agent Card invocation format, and translates A2A replies back to GAIA `Response` schemas.
+
+### 2.3 Model Context Protocol (MCP) (`protocol: "mcp"`)
+Used to expose standard LLM tools (e.g., local file system readers, DB executors) to the GAIA kernel.
+* The kernel acts as an MCP Client.
+* When the kernel routes a step to an MCP agent, it translates the GAIA `Request.input` into an MCP `CallToolRequest`.
+* MCP `CallToolResult` is mapped back to the GAIA `Response.output`.
 
 ---
 
-### 6. Local vs. Remote Routing
+## 3. Security at the Transport Layer
 
-* Agent classification: `location`, `transport`, `compute_class`
-* Routing preferences based on latency requirements
-* Failure characteristics per transport type
-
----
-
-### 7. Adding New Adapters
-
-* How to implement a new protocol adapter
-* Registration with the Transport Layer
-* Testing requirements
+* **mTLS Requirement**: For `grpc` and `http` transports, Mutual TLS is strongly recommended for remote agents to ensure zero-trust verification.
+* **Local Sandboxing**: `ipc` sockets must be secured via standard POSIX file permissions, ensuring only the Kernel process and the Agent process can read/write to the socket.
 
 ---
 
 ## Related Documents
 
-* [A2A Integration](../protocols/a2a-integration.md) — A2A adapter details
-* [MCP Integration](../protocols/mcp-integration.md) — MCP adapter details
-* [Native Protocol](../protocols/native-protocol.md) — native adapter details
-* [Data Model & Schemas](schemas.md) — AgentManifest `transport` and `protocol` fields
-* [Registry Spec](registry.md) — agent classification and routing strategy
-* [Building Adapters Guide](../guides/building-adapters.md) — contributor guide for new adapters
-
----
-
-## TODO
-
-- [ ] Define formal adapter interface (TypeScript/Go)
-- [ ] Document A2A wire format with examples
-- [ ] Document MCP wire format with examples
-- [ ] Specify error mapping per protocol
-- [ ] Add sequence diagrams for each transport type
+* [Schemas Spec](schemas.md) — The payloads sent over these transports.
+* [Communication Spec](communication.md) — Async delivery flows riding on top of these transports.
+* [Registry Spec](registry.md) — Dispatcher scoring bonuses based on transport type.

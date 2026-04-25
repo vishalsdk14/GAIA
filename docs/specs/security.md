@@ -1,112 +1,100 @@
-# Security & Policy Engine Specification
+# Security & Policy Specification
 
-> **Status**: 🔲 Not Started
+> **Status**: 🟢 Complete
 >
-> **Source**: [design.md — Sections 5, 13](../design.md)
+> **Source**: [design.md — Sections 5, 8](../design.md)
 
 ---
 
 ## Purpose
 
-This document specifies the **Policy Engine** (the "Firewall") and the **Security Model** — how the kernel authenticates agents, authorizes actions, enforces sandboxes, and prevents data leakage.
+This document outlines the GAIA Kernel's security architecture. It formalizes the Policy Engine DSL used to define cross-cutting constraints, the exact failure modes for policy violations, and the immutable Audit Logging system required for system traceability.
 
 ---
 
-## Enforcement Principles
+## 1. The Policy Engine
 
-1. **Isolation First**: No agent shall have network or filesystem access beyond what is explicitly granted in its sandbox profile.
-2. **Mediation Mandate**: All inter-agent data flow must pass through the kernel. Direct memory sharing or IPC between agents is a protocol violation.
-3. **Schema Enforcement**: Every byte of input and output must be validated. Non-compliant agents are immediately transitioned to the `quarantined` state.
-4. **Least Privilege**: Capabilities are granted with the minimum necessary scope (e.g., `read_only` by default).
+The Policy Engine acts as the definitive gatekeeper in Phase 5 of the Control Loop. Every inbound Request from the Planner and every outbound Request to an Agent must pass policy evaluation.
 
----
+### 1.1 Policy DSL
 
-## Sections to Define
+GAIA uses **Common Expression Language (CEL)** for policy definitions. CEL provides a fast, safe, and non-Turing complete environment to evaluate boolean rules against the task and step context.
 
-### 1. Identity & Authentication
+**Example Policies:**
 
-* Per-agent credentials: mTLS, signed tokens, OAuth
-* Credential lifecycle (issuance, rotation, revocation)
-* Agent identity verification on every request
+* *Cost Control*: Restrict an agent from exceeding a specific budget.
+  ```cel
+  task.metrics.cost_estimate + step.metrics.cost_estimate < 100.0
+  ```
+* *Sandbox Enforcement*: Prevent agents from modifying global state unless explicitly granted the `state:write` scope.
+  ```cel
+  !("state:write" in agent.auth.scopes) ? !capability.constraints.mutates_state : true
+  ```
+* *Approval Gates*: Force human approval if an external IO capability is invoked in production.
+  ```cel
+  (capability.constraints.external_io && env == "production") ? false : true
+  ```
 
----
-
-### 2. Authorization (Scopes)
-
-* Per-capability invocation rights
-* Scope format: `capability:invoke`, `capability:read`, etc.
-* Scope validation in the Validation Pipeline (Section 5.2)
-
----
-
-### 3. Policy Rules
-
-* Policy definition format (declarative rules)
-* Examples:
-  * "Agent X can only invoke read_only capabilities"
-  * "No agent can spend more than $100 per task"
-  * "Capabilities with `external_io` require human approval"
-* Policy evaluation order (deny-by-default)
+Policies are stored dynamically in the Registry and evaluated in microseconds.
 
 ---
 
-### 4. Sandbox Model
+## 2. Policy Failure Modes
 
-* What does "sandboxed execution" mean concretely?
-* Network policy: deny-by-default egress
-* Resource limits: CPU, memory, execution time
-* Filesystem access restrictions
+When the Policy Engine evaluates a rule that returns `false` or encounters an invalid state, it triggers one of six specific failure modes (referenced in control-loop.md Phase 5.1).
 
----
-
-### 5. Data Minimization
-
-* Agents receive only step-local input
-* No global state leakage
-* Policy exceptions (explicit opt-in)
-
----
-
-### 6. Rate Limiting
-
-* Per-agent rate limits
-* Per-capability rate limits
-* Rate limit response format
-
----
-
-### 7. Audit & Compliance
-
-* What is logged? (every message, every policy decision)
-* Audit log format
-* Retention policy
-* Tamper-proof logging requirements
+1. **`POLICY_DENIED`**: 
+   * **Trigger**: A CEL rule evaluates to false (e.g., budget exceeded, scope missing).
+   * **Action**: Step fails immediately. Escalates to Fallback/Replan.
+2. **`SCHEMA_VIOLATION`**:
+   * **Trigger**: The step input fails JSON Schema validation against the agent's `input_schema`.
+   * **Action**: Step fails. Agent may be quarantined (see failure-handling.md).
+3. **`UNAUTHORIZED`**:
+   * **Trigger**: Agent credentials (JWT, API key) are invalid or expired.
+   * **Action**: Agent connection is rejected. Status → `disconnected`.
+4. **`CAPABILITY_FORBIDDEN`**:
+   * **Trigger**: The agent attempts to invoke a capability it hasn't registered for.
+   * **Action**: Request dropped. Agent trust score is heavily penalized.
+5. **`BUDGET_EXHAUSTED`**:
+   * **Trigger**: The global task budget is depleted.
+   * **Action**: Task halts. Status → `failed`. (Terminal).
+6. **`APPROVAL_REQUIRED`**:
+   * **Trigger**: A CEL rule determines human oversight is needed.
+   * **Action**: The loop yields. Step status remains `pending`. Emits `STEP_APPROVAL_REQUIRED`. Execution pauses until an admin explicitly clears the flag via the API.
 
 ---
 
-### 8. Threat Model
+## 3. Audit Logging
 
-* Malicious agent scenarios
-* Data exfiltration prevention
-* Denial of service protection
-* Trust score manipulation
+To guarantee traceability for all agent actions (design.md Section 5.3), the kernel implements a strict, tamper-proof Audit Log.
+
+### 3.1 Audit Events
+*Every* state transition (Task, Step, Agent, Plan) is written to the Audit Log. This log is a superset of the Event Bus.
+
+### 3.2 Immutability and Retention
+* **Format**: W3C ActivityStreams 2.0 JSON or standard NDJSON.
+* **Storage**: Appended to a write-only datastore (e.g., AWS S3 with Object Lock, or a WORM drive).
+* **Integrity**: Each log entry contains a cryptographic hash of the previous entry, establishing an unbreakable chain of custody.
+* **Retention**: Configurable, but defaults to 365 days for compliance tracking.
+
+### 3.3 Log Entry Schema (Abstract)
+```json
+{
+  "log_id": "uuid",
+  "timestamp": "iso8601",
+  "actor": "kernel | agent_id | admin_id",
+  "action": "STEP_STARTED | POLICY_DENIED | ...",
+  "resource": "step_id | task_id",
+  "context": { "cel_rule_failed": "..." },
+  "hash": "sha256",
+  "prev_hash": "sha256"
+}
+```
 
 ---
 
 ## Related Documents
 
-* [Data Model & Schemas](schemas.md) — AgentManifest auth field, Error schema
-* [Communication Spec](communication.md) — policy enforcement in message flow
-* [Registry Spec](registry.md) — sandbox assignment during registration
-* [Failure Handling Spec](failure-handling.md) — enforcement actions on violations
-* [Security Policy](../../SECURITY.md) — vulnerability disclosure process
-
----
-
-## TODO
-
-- [ ] Define policy rule format (DSL or JSON)
-- [ ] Specify sandbox implementation requirements
-- [ ] Document rate limit algorithm
-- [ ] Create threat model matrix
-- [ ] Define audit log schema
+* [Control Loop Spec](control-loop.md) — Phase 5 Policy checks.
+* [Failure Handling Spec](failure-handling.md) — Escalation paths for `POLICY_DENIED`.
+* [Schemas Spec](schemas.md) — Capability constraints evaluated by CEL.

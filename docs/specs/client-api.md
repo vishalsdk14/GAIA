@@ -1,120 +1,94 @@
 # Client API Specification
 
-> **Status**: 🔲 Not Started
+> **Status**: 🟢 Complete
 >
-> **Source**: [design.md — Section 14: Client Interface](../design.md)
+> **Source**: [design.md — Section 3.4](../design.md)
 
 ---
 
 ## Purpose
 
-This document specifies the **Client-facing REST API** — the boundary between external users/applications and the GAIA kernel. It defines endpoints, request/response schemas, authentication, and streaming protocols.
+This document defines the external-facing Application Programming Interface (API) used by clients (web apps, mobile apps, or other backend systems) to interact with the GAIA Kernel. It covers task submission, state querying, and real-time event streaming.
 
 ---
 
-## Endpoints to Define
+## 1. REST Endpoints
 
-### 1. Submit Goal
+The Kernel exposes a standard HTTP REST API for synchronous operations. All endpoints expect and return `application/json`.
 
-```http
-POST /tasks
+### 1.1 Task Management
+
+* **`POST /api/v1/tasks`**
+  * **Purpose**: Submit a new natural language goal.
+  * **Request**: `{ "goal": "Summarize the latest financial news", "metadata": {} }`
+  * **Response**: `201 Created`. Returns the newly generated `Task` object (status: `pending`).
+
+* **`GET /api/v1/tasks/{task_id}`**
+  * **Purpose**: Retrieve the current state of a task, including its active plan and current step index.
+  * **Response**: Returns the full `Task` schema.
+
+* **`DELETE /api/v1/tasks/{task_id}`**
+  * **Purpose**: Cancel a running task.
+  * **Response**: `202 Accepted`. Transitions task to `cancelled`.
+
+### 1.2 State & Approvals
+
+* **`GET /api/v1/tasks/{task_id}/state`**
+  * **Purpose**: Fetch the current Tier 1 `ActiveState` (accumulated step outputs).
+
+* **`POST /api/v1/steps/{step_id}/approve`**
+  * **Purpose**: Manually unblock a step that is in the `APPROVAL_REQUIRED` failure mode (see security.md).
+  * **Response**: `200 OK`. Step transitions back to `pending`.
+
+### 1.3 Registry & Administration
+
+* **`GET /api/v1/registry/capabilities`**
+  * **Purpose**: List all active capabilities available to the Planner.
+  
+* **`GET /api/v1/registry/agents`**
+  * **Purpose**: List all connected agents and their `AgentRecord` health metrics.
+
+---
+
+## 2. WebSocket Streaming Model
+
+For real-time observability, clients should connect via WebSockets to consume the Event Bus.
+
+* **Endpoint**: `wss://kernel-host/api/v1/stream?task_id={uuid}`
+* **Behavior**: 
+  1. The client upgrades the connection.
+  2. The kernel streams all `Event` schemas (schemas.md Section 7) associated with the `task_id` in causal order.
+  3. If a connection drops, the client can reconnect and pass `?since_sequence={N}` to replay missed events from the durable log.
+
+**Stream Messages:**
+```json
+{
+  "type": "EVENT",
+  "name": "STEP_COMPLETED",
+  "task_id": "123e4567-e89b-12d3-a456-426614174000",
+  "step_id": "step_2",
+  "sequence_number": 42,
+  "payload": { ... }
+}
 ```
 
-* Request body schema
-* Response schema (task_id, initial status)
-* Validation rules
-* Rate limiting
-
 ---
 
-### 2. Get Task Status
+## 3. Client Authentication
 
-```http
-GET /tasks/{task_id}
-```
+The GAIA Kernel API is secured via JWT (JSON Web Tokens).
 
-* Response schema (full task object with steps)
-* Filtering options (steps only, status only)
+1. **Token Provisioning**: Clients obtain a JWT from an external Identity Provider (e.g., Auth0, Keycloak).
+2. **Bearer Auth**: All REST and WebSocket connections must include the token:
+   `Authorization: Bearer <token>`
+3. **Scope Validation**: The kernel validates that the client has the necessary scopes (e.g., `tasks:write` to create tasks, `admin:read` to view the registry).
 
----
-
-### 3. Cancel Task
-
-```http
-POST /tasks/{task_id}/cancel
-```
-
-* Idempotency (cancelling an already cancelled task)
-* Response schema
-* Side effects (interrupt propagation)
-
----
-
-### 4. List Tasks
-
-```http
-GET /tasks
-```
-
-* Pagination
-* Filtering by status
-* Sorting options
-
----
-
-### 5. Streaming (Real-time Updates)
-
-* WebSocket endpoint specification
-* SSE endpoint specification
-* Event format for streaming
-* Connection lifecycle (subscribe, heartbeat, disconnect)
-
----
-
-### 6. Agent Management (Admin)
-
-```http
-POST /agents/register
-GET /agents
-GET /agents/{agent_id}
-DELETE /agents/{agent_id}
-```
-
-* Admin authentication requirements
-* Agent status and health queries
-
----
-
-### 7. Authentication
-
-* Client authentication methods
-* API key management
-* Token format
-
----
-
-### 8. Error Responses
-
-* Standard error response format
-* HTTP status code mapping
-* Error code catalog
+*Note: Agent authentication is handled separately during the Registry Handshake via mTLS or Agent API Keys (see registry.md).*
 
 ---
 
 ## Related Documents
 
-* [Data Model & Schemas](schemas.md) — Task, Error, and Response schemas
-* [Communication Spec](communication.md) — event streaming for clients
-* [Event Catalog](../reference/event-catalog.md) — events available via WebSocket/SSE
-* [Error Code Catalog](../reference/error-codes.md) — HTTP status code mapping
-* [Getting Started Guide](../guides/getting-started.md) — first API usage walkthrough
-
----
-
-## TODO
-
-- [ ] Define OpenAPI 3.0 specification
-- [ ] Document all request/response examples
-- [ ] Specify rate limiting per endpoint
-- [ ] Define WebSocket/SSE protocol details
-- [ ] Add authentication flow diagrams
+* [Control Loop Spec](control-loop.md) — How the API integrates into Phase 1 of the loop.
+* [Communication Spec](communication.md) — Event streaming guarantees.
+* [Security Spec](security.md) — Approval overrides via the API.
