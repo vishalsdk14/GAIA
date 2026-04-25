@@ -15,11 +15,14 @@
 package api
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"gaia/kernel/pkg/core"
 	"gaia/kernel/pkg/registry"
 	"gaia/kernel/pkg/state"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -32,6 +35,12 @@ type Server struct {
 	orchestrator *core.Orchestrator
 	registry     registry.CapabilityRegistry
 	agentStore   *state.SQLiteStore
+
+	// Security Configuration
+	AuthMode       string
+	CACertPath     string
+	ServerCertPath string
+	ServerKeyPath  string
 }
 
 // NewServer initializes the HTTP router and wires up the kernel subsystems.
@@ -85,8 +94,34 @@ func (s *Server) setupRoutes() {
 }
 
 // Start launches the HTTP server on the specified address.
+// In 'strict' mode, it enforces mTLS with client certificate verification.
 func (s *Server) Start(addr string) error {
+	if s.AuthMode == "strict" {
+		return s.startTLS(addr)
+	}
 	return http.ListenAndServe(addr, s.router)
+}
+
+func (s *Server) startTLS(addr string) error {
+	caCert, err := os.ReadFile(s.CACertPath)
+	if err != nil {
+		return err
+	}
+	caCertPool := x509.NewCertPool()
+	caCertPool.AppendCertsFromPEM(caCert)
+
+	tlsConfig := &tls.Config{
+		ClientCAs:  caCertPool,
+		ClientAuth: tls.RequireAndVerifyClientCert,
+	}
+
+	server := &http.Server{
+		Addr:      addr,
+		Handler:   s.router,
+		TLSConfig: tlsConfig,
+	}
+
+	return server.ListenAndServeTLS(s.ServerCertPath, s.ServerKeyPath)
 }
 
 // jsonResponse is a helper to write JSON objects to the response writer.

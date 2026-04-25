@@ -10,7 +10,18 @@
  * goal submission and deterministic task tracking.
  */
 import axios, { AxiosInstance } from 'axios';
+import * as https from 'https';
 import { Task } from './types';
+
+/**
+ * TlsConfig provides the necessary certificates for mTLS (Mutual TLS) authentication.
+ */
+export interface TlsConfig {
+  cert: string | Buffer;
+  key: string | Buffer;
+  ca?: string | Buffer;
+  rejectUnauthorized?: boolean;
+}
 
 /**
  * GaiaClient provides a high-level interface for interacting with the GAIA Kernel.
@@ -19,9 +30,20 @@ import { Task } from './types';
 export class GaiaClient {
   private client: AxiosInstance;
 
-  constructor(baseURL: string = 'http://localhost:8080') {
+  constructor(baseURL: string = 'http://localhost:8080', tls?: TlsConfig) {
+    let httpsAgent;
+    if (tls) {
+      httpsAgent = new https.Agent({
+        cert: tls.cert,
+        key: tls.key,
+        ca: tls.ca,
+        rejectUnauthorized: tls.rejectUnauthorized ?? true,
+      });
+    }
+
     this.client = axios.create({
       baseURL,
+      httpsAgent,
       headers: {
         'Content-Type': 'application/json',
       },

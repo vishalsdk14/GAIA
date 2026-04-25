@@ -21,6 +21,7 @@ import (
 	"gaia/kernel/pkg/registry"
 	"gaia/kernel/pkg/state"
 	"log"
+	"os"
 )
 
 func main() {
@@ -63,10 +64,27 @@ func main() {
 
 	// 5. Initialize & Start API Gateway
 	server := api.NewServer(orch, reg, store)
+
+	// Phase 8: Configure Security Modes
+	server.AuthMode = getEnv("GAIA_AUTH_MODE", "legacy")
+	server.CACertPath = getEnv("GAIA_CA_CERT", "./certs/ca.crt")
+	server.ServerCertPath = getEnv("GAIA_SERVER_CERT", "./certs/server.crt")
+	server.ServerKeyPath = getEnv("GAIA_SERVER_KEY", "./certs/server.key")
 	
-	port := ":8080"
-	logger.L.Info("Kernel Gateway starting", "addr", port)
+	port := getEnv("GAIA_PORT", ":8080")
+	logger.L.Info("Kernel Gateway starting", 
+		"addr", port, 
+		"auth_mode", server.AuthMode,
+	)
+	
 	if err := server.Start(port); err != nil {
 		log.Fatalf("Critical: API Server failed: %v", err)
 	}
+}
+
+func getEnv(key, fallback string) string {
+	if value, ok := os.LookupEnv(key); ok {
+		return value
+	}
+	return fallback
 }

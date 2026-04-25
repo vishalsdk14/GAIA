@@ -12,7 +12,37 @@ This document outlines the GAIA Kernel's security architecture. It formalizes th
 
 ---
 
-## 1. The Policy Engine
+## 1. Authentication Modes
+
+The GAIA Kernel supports three distinct authentication modes to balance security and developer experience. The mode is configured at startup via the `GAIA_AUTH_MODE` environment variable.
+
+| Mode | Verification | Protocol | Extraction | Use Case |
+| :--- | :--- | :--- | :--- | :--- |
+| **`strict`** | Mandatory | mTLS | Certificate `CN` | Production / Untrusted Networks |
+| **`standard`** | Required | JWT / Token | JWT `sub` claim | Private Cloud / Shared VPCs |
+| **`legacy`** | None | Header | `X-Agent-ID` header | Local Dev / Trusted Networks |
+
+> [!WARNING]
+> Running in `legacy` mode disables identity verification. This should ONLY be used for local development or within physically isolated networks.
+
+---
+
+## 2. Identity Extraction
+
+Identity extraction is the process of mapping a raw network request to a verified `AgentID`.
+
+### 2.1 mTLS Extraction (Strict)
+In `strict` mode, the Kernel extracts the identity from the **TLS Peer Certificates**. The certificate's `Common Name (CN)` must match the `agent_id` provided in the registration manifest. If the certificate is missing or invalid, the Kernel returns `401 Unauthorized`.
+
+### 2.2 JWT Extraction (Standard)
+In `standard` mode, the Kernel expects an `Authorization: Bearer <token>` header. The token must be signed by a trusted issuer (the Kernel or a configured OIDC provider). The `sub` (subject) claim is used as the verified `AgentID`.
+
+### 2.3 Header Extraction (Legacy)
+In `legacy` mode, the Kernel relies on the `X-Agent-ID` header. No verification is performed.
+
+---
+
+## 3. The Policy Engine
 
 The Policy Engine acts as the definitive gatekeeper in Phase 5 of the Control Loop. Every inbound Request from the Planner and every outbound Request to an Agent must pass policy evaluation.
 

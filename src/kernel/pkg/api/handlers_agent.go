@@ -27,17 +27,29 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// getAgentID extracts the agent identity from the request headers.
-// Note: In the foundation phase, this relies on X-Agent-ID; Phase 8 will transition
-// this to verified mTLS / JWT identity extraction.
-func getAgentID(r *http.Request) string {
-	return r.Header.Get("X-Agent-ID")
+// getAgentID extracts the agent identity from the request based on the current AuthMode.
+func (s *Server) getAgentID(r *http.Request) string {
+	switch s.AuthMode {
+	case "strict":
+		if r.TLS != nil && len(r.TLS.PeerCertificates) > 0 {
+			// Extract identity from the certificate's Common Name (CN)
+			return r.TLS.PeerCertificates[0].Subject.CommonName
+		}
+		return ""
+	case "standard":
+		// TODO: Implement JWT extraction from Authorization header
+		return r.Header.Get("X-Agent-ID")
+	case "legacy":
+		fallthrough
+	default:
+		return r.Header.Get("X-Agent-ID")
+	}
 }
 
 // handleGetState retrieves a JSON document for a specific key within an agent's namespace.
 // It enforces strict isolation: agents can only access their own partitioned data.
 func (s *Server) handleGetState(w http.ResponseWriter, r *http.Request) {
-	agentID := getAgentID(r)
+	agentID := s.getAgentID(r)
 	if agentID == "" {
 		jsonResponse(w, http.StatusUnauthorized, map[string]string{"error": "Agent ID required"})
 		return
@@ -62,7 +74,7 @@ func (s *Server) handleGetState(w http.ResponseWriter, r *http.Request) {
 // It performs a policy check against the agent's manifest to verify state access
 // permissions and storage quota (max_bytes) before committing the write.
 func (s *Server) handlePutState(w http.ResponseWriter, r *http.Request) {
-	agentID := getAgentID(r)
+	agentID := s.getAgentID(r)
 	if agentID == "" {
 		jsonResponse(w, http.StatusUnauthorized, map[string]string{"error": "Agent ID required"})
 		return
@@ -93,7 +105,7 @@ func (s *Server) handlePutState(w http.ResponseWriter, r *http.Request) {
 // handleDeleteState removes a specific key-value pair from the agent's namespace.
 // This operation is idempotent and returns 204 No Content on success.
 func (s *Server) handleDeleteState(w http.ResponseWriter, r *http.Request) {
-	agentID := getAgentID(r)
+	agentID := s.getAgentID(r)
 	if agentID == "" {
 		jsonResponse(w, http.StatusUnauthorized, map[string]string{"error": "Agent ID required"})
 		return
@@ -111,7 +123,7 @@ func (s *Server) handleDeleteState(w http.ResponseWriter, r *http.Request) {
 // handleListStateKeys retrieves a paginated list of all keys currently stored by the agent.
 // It also returns the current storage usage in bytes to help agents manage their quotas.
 func (s *Server) handleListStateKeys(w http.ResponseWriter, r *http.Request) {
-	agentID := getAgentID(r)
+	agentID := s.getAgentID(r)
 	if agentID == "" {
 		jsonResponse(w, http.StatusUnauthorized, map[string]string{"error": "Agent ID required"})
 		return
@@ -147,6 +159,17 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	if manifest.AgentID == "" {
 		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "agent_id is required"})
 		return
+	}
+
+	// Phase 8: Verify that the agent_id in the manifest matches the verified identity
+	if s.AuthMode == "strict" {
+		verifiedID := s.getAgentID(r)
+		if verifiedID != manifest.AgentID {
+			jsonResponse(w, http.StatusForbidden, map[string]string{
+				"error": "Identity mismatch: agent_id in manifest does not match certificate CN",
+			})
+			return
+		}
 	}
 
 	if err := s.registry.Register(&manifest); err != nil {
