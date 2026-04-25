@@ -21,9 +21,18 @@ class GaiaClient:
     It encapsulates the connection pooling and JSON-to-Model conversion logic,
     ensuring type-safety for Python developers.
     """
-    def __init__(self, base_url: str = "http://localhost:8080", cert: Optional[tuple] = None, verify: Optional[str] = None):
+    def __init__(self, base_url: str = "http://localhost:8080", cert: Optional[tuple] = None, verify: Optional[str] = None, auth_token: Optional[str] = None):
         self.base_url = base_url
-        self.client = httpx.AsyncClient(base_url=base_url, cert=cert, verify=verify)
+        headers = {}
+        if auth_token:
+            headers["Authorization"] = f"Bearer {auth_token}"
+        
+        self.client = httpx.AsyncClient(
+            base_url=base_url, 
+            cert=cert, 
+            verify=verify, 
+            headers=headers
+        )
 
     async def submit(self, goal: str) -> Task:
         """

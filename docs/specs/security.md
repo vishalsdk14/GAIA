@@ -12,6 +12,22 @@ This document outlines the GAIA Kernel's security architecture. It formalizes th
 
 ---
 
+## 0. Security Roles
+
+The GAIA security model distinguishes between two primary actors with different access levels and responsibilities.
+
+### 0.1 The Kernel Operator
+The Operator manages the GAIA infrastructure. They possess the highest level of trust and control.
+* **Assets**: Master Encryption Key (`GAIA_ENCRYPTION_KEY`), Root CA private key, and JWT Signing Secret.
+* **Responsibility**: Provisioning the environment, issuing certificates/tokens to developers, and managing the global audit log.
+
+### 0.2 The Agent Developer
+The Developer builds agents that consume the Kernel's capabilities. They operate within a sandboxed, verified identity.
+* **Assets**: Agent-specific certificates (`.crt`/`.key`) or JWT tokens issued by the Operator.
+* **Responsibility**: Configuring agents with the correct credentials and ensuring their agent conforms to the registered manifest and security policies.
+
+---
+
 ## 1. Authentication Modes
 
 The GAIA Kernel supports three distinct authentication modes to balance security and developer experience. The mode is configured at startup via the `GAIA_AUTH_MODE` environment variable.

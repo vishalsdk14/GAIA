@@ -213,10 +213,10 @@ For detailed setup instructions, visit the [Documentation Site](docs/site/docs/i
 - [x] Stress testing & failure injection frameworks
 - [x] GAIA Unified CLI (`gaia` script)
 
-### Phase 8: Security Hardening & mTLS (Next)
-- [ ] mTLS Handshake for Agent Identity
-- [ ] JWT-based task authorization
-- [ ] Policy-based data encryption at rest
+### Phase 8: Security Hardening & mTLS (In Progress)
+- [x] mTLS Handshake for Agent Identity
+- [x] JWT-based task authorization
+- [x] Policy-based data encryption at rest
 - [ ] Secret management integration
 
 ### Phase 9: Observability & Human-in-the-Loop (HITL)

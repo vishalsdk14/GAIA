@@ -47,6 +47,16 @@ func main() {
 	if err != nil {
 		log.Fatalf("Critical: Failed to initialize SQLite store: %v", err)
 	}
+
+	// Phase 8: Encryption at Rest
+	// If GAIA_ENCRYPTION_KEY is provided, enable transparent AES-GCM encryption for Tier 4 state.
+	if encKey := os.Getenv("GAIA_ENCRYPTION_KEY"); encKey != "" {
+		if err := store.EnableEncryption([]byte(encKey)); err != nil {
+			log.Fatalf("Critical: Failed to enable encryption: %v", err)
+		}
+		logger.L.Info("Encryption at Rest enabled for Tier 4 storage")
+	}
+
 	taskStore, _ := state.NewTaskStore(store.DB)
 
 	// 2. Initialize Registry
@@ -67,6 +77,13 @@ func main() {
 
 	// Phase 8: Configure Security Modes
 	server.AuthMode = getEnv("GAIA_AUTH_MODE", "legacy")
+	
+	// JWT Configuration (Standard/Strict Mode)
+	server.AuthJWTEnabled = getEnv("GAIA_AUTH_JWT_ENABLED", "false") == "true"
+	if jwtSecret := os.Getenv("GAIA_JWT_SECRET"); jwtSecret != "" {
+		server.JWTSecret = []byte(jwtSecret)
+	}
+
 	server.CACertPath = getEnv("GAIA_CA_CERT", "./certs/ca.crt")
 	server.ServerCertPath = getEnv("GAIA_SERVER_CERT", "./certs/server.crt")
 	server.ServerKeyPath = getEnv("GAIA_SERVER_KEY", "./certs/server.key")

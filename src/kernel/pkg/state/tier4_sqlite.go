@@ -20,6 +20,7 @@ package state
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"gaia/kernel/pkg/types"
 	"os"
@@ -33,8 +34,15 @@ import (
 // SQLiteStore is the Phase 3+ implementation for persistent kernel state.
 // It handles Tier 4 (Managed Agent State) and Tier 2 (Task History).
 type SQLiteStore struct {
-	DB *sql.DB
+	DB        *sql.DB
+	encryptor *Encryptor
 }
+
+const (
+	// EncryptionPrefix is prepended to encrypted blobs in the database to distinguish
+	// them from legacy plaintext JSON documents.
+	EncryptionPrefix = "GAIA:ENC:"
+)
 
 // NewSQLiteStore initializes the database connection and ensures core schemas exist.
 func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
@@ -64,6 +72,16 @@ func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 	}
 
 	return &SQLiteStore{DB: db}, nil
+}
+
+// EnableEncryption initializes the internal encryptor with a 32-byte master key.
+func (s *SQLiteStore) EnableEncryption(key []byte) error {
+	enc, err := NewEncryptor(key)
+	if err != nil {
+		return err
+	}
+	s.encryptor = enc
+	return nil
 }
 
 // Put saves a key-value document into the SQLite store.
@@ -96,7 +114,17 @@ func (s *SQLiteStore) Put(agentID string, key string, data interface{}, manifest
 		state_data=excluded.state_data, 
 		updated_at=CURRENT_TIMESTAMP;`
 	
-	_, err = s.DB.Exec(query, agentID, key, string(bytes))
+	finalData := string(bytes)
+	if s.encryptor != nil {
+		encrypted, err := s.encryptor.Encrypt(bytes)
+		if err != nil {
+			return fmt.Errorf("state: encryption failed: %w", err)
+		}
+		// Prepend prefix to identify encrypted data
+		finalData = EncryptionPrefix + string(encrypted)
+	}
+
+	_, err = s.DB.Exec(query, agentID, key, finalData)
 	return err
 }
 
@@ -112,8 +140,25 @@ func (s *SQLiteStore) Get(agentID string, key string) (interface{}, error) {
 		return nil, fmt.Errorf("state: failed to retrieve data: %w", err)
 	}
 
+	var rawBytes []byte
+	// Check if data is encrypted by looking for the GAIA:ENC: prefix
+	if len(dataStr) > len(EncryptionPrefix) && dataStr[:len(EncryptionPrefix)] == EncryptionPrefix {
+		if s.encryptor == nil {
+			return nil, errors.New("state: data is encrypted but no master key is provided")
+		}
+		
+		encryptedData := []byte(dataStr[len(EncryptionPrefix):])
+		decrypted, err := s.encryptor.Decrypt(encryptedData)
+		if err != nil {
+			return nil, fmt.Errorf("state: %w", err)
+		}
+		rawBytes = decrypted
+	} else {
+		rawBytes = []byte(dataStr)
+	}
+
 	var data interface{}
-	if err := json.Unmarshal([]byte(dataStr), &data); err != nil {
+	if err := json.Unmarshal(rawBytes, &data); err != nil {
 		return nil, fmt.Errorf("state: failed to unmarshal retrieved data: %w", err)
 	}
 	return data, nil

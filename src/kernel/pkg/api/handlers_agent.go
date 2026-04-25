@@ -28,20 +28,36 @@ import (
 )
 
 // getAgentID extracts the agent identity from the request based on the current AuthMode.
+// It prioritizes cryptographic verification (mTLS/JWT) over plaintext headers.
 func (s *Server) getAgentID(r *http.Request) string {
 	switch s.AuthMode {
 	case "strict":
+		// 1. Mandatory mTLS Verification
 		if r.TLS != nil && len(r.TLS.PeerCertificates) > 0 {
-			// Extract identity from the certificate's Common Name (CN)
 			return r.TLS.PeerCertificates[0].Subject.CommonName
 		}
 		return ""
+
 	case "standard":
-		// TODO: Implement JWT extraction from Authorization header
+		// 2. JWT Verification (if enabled)
+		if s.AuthJWTEnabled {
+			authHeader := r.Header.Get("Authorization")
+			if authHeader == "" {
+				return ""
+			}
+			agentID, err := VerifyToken(authHeader, s.JWTSecret)
+			if err != nil {
+				return ""
+			}
+			return agentID
+		}
+		// Fallback to Header if JWT is explicitly disabled in standard mode
 		return r.Header.Get("X-Agent-ID")
+
 	case "legacy":
 		fallthrough
 	default:
+		// 3. Trusted Header (Local Dev Only)
 		return r.Header.Get("X-Agent-ID")
 	}
 }

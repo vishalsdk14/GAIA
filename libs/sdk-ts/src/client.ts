@@ -24,29 +24,46 @@ export interface TlsConfig {
 }
 
 /**
+ * ClientConfig provides the configuration options for the GaiaClient.
+ */
+export interface ClientConfig {
+  baseURL?: string;
+  tls?: TlsConfig;
+  authToken?: string;
+}
+
+/**
  * GaiaClient provides a high-level interface for interacting with the GAIA Kernel.
  * It handles task submission, status polling, and agent discovery.
  */
 export class GaiaClient {
   private client: AxiosInstance;
 
-  constructor(baseURL: string = 'http://localhost:8080', tls?: TlsConfig) {
+  constructor(config: ClientConfig = {}) {
+    const baseURL = config.baseURL || 'http://localhost:8080';
     let httpsAgent;
-    if (tls) {
+
+    if (config.tls) {
       httpsAgent = new https.Agent({
-        cert: tls.cert,
-        key: tls.key,
-        ca: tls.ca,
-        rejectUnauthorized: tls.rejectUnauthorized ?? true,
+        cert: config.tls.cert,
+        key: config.tls.key,
+        ca: config.tls.ca,
+        rejectUnauthorized: config.tls.rejectUnauthorized ?? true,
       });
+    }
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+
+    if (config.authToken) {
+      headers['Authorization'] = `Bearer ${config.authToken}`;
     }
 
     this.client = axios.create({
       baseURL,
       httpsAgent,
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers,
     });
   }
 

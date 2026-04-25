@@ -37,10 +37,12 @@ type Server struct {
 	agentStore   *state.SQLiteStore
 
 	// Security Configuration
-	AuthMode       string
-	CACertPath     string
-	ServerCertPath string
-	ServerKeyPath  string
+	AuthMode        string
+	AuthJWTEnabled  bool
+	JWTSecret       []byte
+	CACertPath      string
+	ServerCertPath  string
+	ServerKeyPath   string
 }
 
 // NewServer initializes the HTTP router and wires up the kernel subsystems.
