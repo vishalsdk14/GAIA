@@ -27,6 +27,11 @@ func main() {
 	// Initialize structured logging
 	logger.Init(config.LogLevel)
 
+	// Initialize tamper-proof Audit Logger
+	if _, err := logger.InitAuditLogger(config.AuditLogPath); err != nil {
+		fmt.Printf("Warning: Failed to initialize audit log: %v\n", err)
+	}
+
 	logger.L.Info("GAIA Orchestration Kernel initializing...", 
 		"version", "0.1.0-alpha",
 		"log_level", config.LogLevel,

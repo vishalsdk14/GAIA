@@ -45,6 +45,7 @@ type Coordinator struct {
 	taskStore *state.TaskStore
 	policy    *policy.PolicyEngine
 	validator *policy.SchemaValidator
+	audit     *logger.AuditLogger
 }
 
 // NewCoordinator initializes a new task coordinator with the required kernel subsystems.
@@ -63,6 +64,7 @@ func NewCoordinator(t *types.Task, c *KernelConfig, r registry.CapabilityRegistr
 		taskStore: ts,
 		policy:    pe,
 		validator: &policy.SchemaValidator{},
+		audit:     logger.GetAuditLogger(),
 	}
 }
 
@@ -123,6 +125,7 @@ func (c *Coordinator) phase1Submission() error {
 	
 	c.log.Info("Task transitioned to planning")
 	c.events.Emit(common.Event{Type: types.EventTaskPlanning, TaskID: c.task.TaskID})
+	c.audit.Log("kernel", string(types.EventTaskPlanning), c.task.TaskID, nil)
 	
 	// Checkpoint 1: Initial Submission
 	if err := c.taskStore.SaveTask(c.task); err != nil {
@@ -173,6 +176,7 @@ func (c *Coordinator) phase2Planning() error {
 		c.task.Plan = plan.Steps
 		c.log.Info("Plan generated successfully", "step_count", len(plan.Steps))
 		c.events.Emit(common.Event{Type: types.EventPlanGenerated, TaskID: c.task.TaskID})
+		c.audit.Log("planner", string(types.EventPlanGenerated), c.task.TaskID, map[string]interface{}{"step_count": len(plan.Steps)})
 
 		// Checkpoint 2: Plan Generation
 		if err := c.taskStore.SaveTask(c.task); err != nil {
@@ -206,6 +210,7 @@ func (c *Coordinator) failTask(err error) error {
 		TaskID:  c.task.TaskID,
 		Payload: map[string]interface{}{"error": err.Error()},
 	})
+	c.audit.Log("kernel", string(types.EventTaskFailed), c.task.TaskID, map[string]interface{}{"error": err.Error()})
 	
 	return err
 }
@@ -292,7 +297,7 @@ func (c *Coordinator) executeDAG() error {
 				"agent": map[string]interface{}{
 					"agent_id": agentManifest.AgentID,
 				},
-				"env": "production",
+				"env": c.config.Environment,
 			}
 
 			// Example: Global kernel policy strings (would be in config in real impl)
@@ -302,6 +307,7 @@ func (c *Coordinator) executeDAG() error {
 
 			if err := c.policy.EvaluateAll(globalPolicies, policyContext); err != nil {
 				c.log.Warn("Policy denied execution", "step_id", step.StepID, "error", err)
+				c.audit.Log("policy_engine", "POLICY_DENIED", step.StepID, map[string]interface{}{"reason": err.Error()})
 				c.handleStepFailure(step, &types.Error{Code: types.ErrorCodePolicyDenied, Message: err.Error()}, agentManifest)
 				return
 			}
@@ -339,6 +345,7 @@ func (c *Coordinator) executeDAG() error {
 
 			c.log.Info("Dispatching step", "step_id", step.StepID, "capability", step.Capability)
 			c.events.Emit(common.Event{Type: types.EventStepStarted, TaskID: c.task.TaskID, StepID: step.StepID})
+			c.audit.Log("kernel", string(types.EventStepStarted), step.StepID, map[string]interface{}{"agent": agentManifest.AgentID})
 
 			resp, err := c.transport.Dispatch(req, agentManifest)
 			if err != nil {
@@ -388,12 +395,12 @@ func (c *Coordinator) handleStepFailure(step *types.Step, err *types.Error, agen
 	c.log.Warn("Handling step failure", "step_id", step.StepID, "error_code", err.Code, "retry_count", step.RetryCount)
 
 	// Tier 1: Retry (if retryable and attempts < max)
-	// For this foundation phase, we use a default policy if none exists
+	// We use the configured kernel defaults if no specific policy exists on the step.
 	policy := &types.RetryPolicy{
-		MaxAttempts: 3,
+		MaxAttempts: c.config.RetryMaxAttempts,
 		Backoff:     "exponential",
-		BaseDelayMS: 500,
-		MaxDelayMS:  10000,
+		BaseDelayMS: c.config.RetryBaseDelayMS,
+		MaxDelayMS:  c.config.RetryMaxDelayMS,
 	}
 
 	if IsRetryable(step, err, agent) && step.RetryCount < policy.MaxAttempts {

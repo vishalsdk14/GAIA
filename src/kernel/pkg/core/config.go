@@ -56,6 +56,22 @@ type KernelConfig struct {
 
 	// LogLevel defines the verbosity of the kernel logs (e.g., 'DEBUG', 'INFO', 'ERROR').
 	LogLevel string `json:"log_level"`
+
+	// Environment specifies the deployment context (e.g., 'development', 'production').
+	// This is used by the Policy Engine to enforce environment-specific rules.
+	Environment string `json:"environment"`
+
+	// RetryMaxAttempts defines the default maximum number of retry attempts for a step.
+	RetryMaxAttempts int `json:"retry_max_attempts"`
+
+	// RetryBaseDelayMS is the initial delay before the first retry.
+	RetryBaseDelayMS int `json:"retry_base_delay_ms"`
+
+	// RetryMaxDelayMS is the maximum bound for exponential backoff.
+	RetryMaxDelayMS int `json:"retry_max_delay_ms"`
+
+	// AuditLogPath is the location of the immutable, tamper-proof audit trail.
+	AuditLogPath string `json:"audit_log_path"`
 }
 
 // DefaultConfig returns a sane set of defaults for the GAIA Kernel.
@@ -69,5 +85,10 @@ func DefaultConfig() *KernelConfig {
 		MaxConcurrentPerAgent: 3,
 		DBPath:             "./data/gaia_state.db",
 		LogLevel:           "INFO",
+		Environment:        "development",
+		RetryMaxAttempts:   3,
+		RetryBaseDelayMS:   500,
+		RetryMaxDelayMS:    10000,
+		AuditLogPath:       "./data/audit.log",
 	}
 }
