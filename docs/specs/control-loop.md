@@ -538,6 +538,19 @@ every HEALTH_CHECK_INTERVAL (default: 30s):
 
 ---
 
+## 11. Kernel Graceful Shutdown (Termination)
+
+When the GAIA Kernel process receives a `SIGTERM` or `SIGINT`, it initiates a formal drain sequence:
+
+1. **Announcement Phase**: Kernel emits a `SHUTDOWN_INITIATED` event to the Event Bus.
+2. **Drain Phase**: The REST API stops accepting new tasks (`POST /api/v1/tasks` returns `503 Service Unavailable`).
+3. **Grace Period**: Existing in-flight tasks have 60 seconds (configurable) to complete their current step. No new steps are dispatched from `pending`.
+4. **Force Close**: After the grace period expires, any remaining `running` steps are marked `failed`, causing the parent tasks to transition to `failed`.
+5. **Event Finalization**: All pending events in memory are forcefully flushed to the durable log.
+6. **Termination**: The Kernel process safely exits.
+
+---
+
 ## TODO
 
 - [x] Convert pseudocode to formal flowchart (Mermaid)

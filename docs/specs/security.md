@@ -91,6 +91,20 @@ To guarantee traceability for all agent actions (design.md Section 5.3), the ker
 }
 ```
 
+### 3.4 Audit Query API
+
+**Endpoint:** `GET /api/v1/admin/audit-logs`
+
+**Query Parameters:**
+- `actor=agent_id` — Filter by actor (kernel, agent_id, or admin_id)
+- `action=STEP_STARTED` — Filter by action/event type
+- `resource=step_id` — Filter by specific task or step
+- `from_timestamp=2026-01-01T00:00:00Z` — Time range start
+- `to_timestamp=2026-01-02T00:00:00Z` — Time range end
+- `limit=100` — Pagination limit
+
+**Response:** NDJSON stream of audit log entries matching the query parameters.
+
 ---
 
 ## Related Documents

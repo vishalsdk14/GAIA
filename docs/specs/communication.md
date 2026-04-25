@@ -31,7 +31,12 @@ The kernel supports three delivery models to accommodate different agent archite
 * **Flow**:
   1. Kernel sends `Request`.
   2. Agent returns ACK Response with `job_id`.
-  3. Kernel polls the agent's endpoint: `GET /agent/{agent_id}/jobs/{job_id}` at exponential backoff intervals.
+  3. Kernel polls the agent's endpoint: `GET /agent/{agent_id}/jobs/{job_id}` at exponential backoff:
+     * **Initial delay**: 100ms
+     * **Multiplier**: 2x
+     * **Max delay**: 30s
+     * **Jitter**: ±20%
+     * *(Example sequence: 100ms, 200ms, 400ms, 800ms, 1.6s, ..., 30s)*
   4. Agent returns HTTP 202 until done, then returns 200 OK with `AsyncCompletion` payload.
 
 ### Option C: Event Bus Subscription (Publish-Subscribe)

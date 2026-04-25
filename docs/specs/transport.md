@@ -26,9 +26,34 @@ The GAIA Kernel is transport-agnostic, supporting multiple protocols to accommod
 * **Wire Format**: Protobuf over HTTP/2.
 * **Request/Response Mapping**: The kernel dynamically translates the JSON schema into a generic Protobuf payload:
   ```protobuf
-  rpc Invoke (InvokeRequest) returns (InvokeResponse);
+  message InvokeRequest {
+    string request_id = 1;
+    string task_id = 2;
+    string step_id = 3;
+    string capability = 4;
+    google.protobuf.Struct input = 5;
+    string mode = 6;  // "sync" or "async"
+    int32 timeout_ms = 7;
+  }
+
+  message InvokeResponse {
+    string request_id = 1;
+    bool success = 2;
+    google.protobuf.Struct output = 3;
+    Error error = 4;
+    string job_id = 5;
+  }
+
+  message Error {
+    string code = 1;
+    string message = 2;
+    bool retryable = 3;
+  }
+
+  service Agent {
+    rpc Invoke (InvokeRequest) returns (InvokeResponse);
+  }
   ```
-  *(Note: The exact protobuf definitions will be provided in a future `gaia.proto` file).*
 * **Best For**: High-throughput, low-latency remote capabilities.
 
 ### 1.3 WebSocket (`transport: "websocket"`)
@@ -55,11 +80,27 @@ Agents explicitly designed for GAIA. They speak the exact JSON schemas defined i
 ### 2.2 Agent-to-Agent (A2A) (`protocol: "a2a"`)
 Standardized external agents. The kernel injects an adapter layer that translates GAIA `Request` schemas into the standard A2A Agent Card invocation format, and translates A2A replies back to GAIA `Response` schemas.
 
+| GAIA | → | A2A |
+|:---|:---|:---|
+| `Request.input` | → | `parameters` |
+| `Response.output` | ← | `result.artifact` |
+| `Error.code` (TIMEOUT) | ← | `error_type`: "timeout" |
+| `Error.code` (POLICY_DENIED) | ← | `error_type`: "unauthorized" |
+
+*(See external A2A specs for full Agent Card format).*
+
 ### 2.3 Model Context Protocol (MCP) (`protocol: "mcp"`)
 Used to expose standard LLM tools (e.g., local file system readers, DB executors) to the GAIA kernel.
 * The kernel acts as an MCP Client.
-* When the kernel routes a step to an MCP agent, it translates the GAIA `Request.input` into an MCP `CallToolRequest`.
+* When the kernel routes a step to an MCP agent, it translates the GAIA `Request` into an MCP `CallToolRequest`.
 * MCP `CallToolResult` is mapped back to the GAIA `Response.output`.
+
+| GAIA | → | MCP |
+|:---|:---|:---|
+| `Request.capability` | → | `method`: "tools/call", `name` |
+| `Request.input` | → | `arguments` |
+| `Response.output` | ← | `content[0].text` |
+| `Error.message` | ← | `isError`: true |
 
 ---
 
