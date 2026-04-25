@@ -13,7 +13,9 @@ src/kernel/vendor/
 *.out
 
 # Node.js
+node_modules/
 libs/sdk-ts/node_modules/
+docs/site/node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -21,9 +23,9 @@ yarn-error.log*
 .env
 
 # Python
-libs/sdk-py/__pycache__/
-libs/sdk-py/*.py[cod]
-libs/sdk-py/*$py.class
+**/__pycache__/
+*.py[cod]
+*$py.class
 libs/sdk-py/.venv/
 libs/sdk-py/env/
 libs/sdk-py/build/

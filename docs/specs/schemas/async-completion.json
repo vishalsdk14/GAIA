@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/AsyncCompletion",
+  "$defs": {
+    "AsyncCompletion": {
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "job_id": {
+          "type": "string"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "success": {
+          "type": "boolean"
+        },
+        "output": true,
+        "error": {
+          "$ref": "#/$defs/Error"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "type",
+        "job_id",
+        "request_id",
+        "success"
+      ]
+    },
+    "Error": {
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "details": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "code",
+        "message",
+        "retryable"
+      ]
+    }
+  }
+}

@@ -22,6 +22,8 @@ import (
 	"net/http"
 	"strconv"
 
+	"gaia/kernel/pkg/types"
+
 	"github.com/go-chi/chi/v5"
 )
 
@@ -132,4 +134,44 @@ func (s *Server) handleListStateKeys(w http.ResponseWriter, r *http.Request) {
 		"total_keys": len(keys),
 		"bytes_used": usage,
 	})
+}
+// handleRegister processes an AgentManifest and binds it to the registry.
+// This implements the Handshake (Phase 1) of the Native protocol.
+func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
+	var manifest types.AgentManifest
+	if err := json.NewDecoder(r.Body).Decode(&manifest); err != nil {
+		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "Invalid manifest JSON"})
+		return
+	}
+
+	if manifest.AgentID == "" {
+		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "agent_id is required"})
+		return
+	}
+
+	if err := s.registry.Register(&manifest); err != nil {
+		jsonResponse(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	jsonResponse(w, http.StatusCreated, map[string]string{
+		"status":   "registered",
+		"agent_id": manifest.AgentID,
+	})
+}
+
+// handleDeregister removes an agent and its capabilities from the global routing table.
+func (s *Server) handleDeregister(w http.ResponseWriter, r *http.Request) {
+	agentID := chi.URLParam(r, "agentID")
+	if agentID == "" {
+		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "agentID is required"})
+		return
+	}
+
+	if err := s.registry.Deregister(agentID); err != nil {
+		jsonResponse(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }

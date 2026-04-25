@@ -1,0 +1,179 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/AgentManifest",
+  "$defs": {
+    "AgentManifest": {
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "transport": {
+          "type": "string"
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "endpoint": {
+          "type": "string"
+        },
+        "health_endpoint": {
+          "type": "string"
+        },
+        "health_endpoint_spec": {
+          "$ref": "#/$defs/HealthEndpointSpec"
+        },
+        "invoke": {
+          "$ref": "#/$defs/InvokeContract"
+        },
+        "capabilities": {
+          "items": {
+            "$ref": "#/$defs/Capability"
+          },
+          "type": "array"
+        },
+        "auth": {
+          "$ref": "#/$defs/AuthConfig"
+        },
+        "state_requirements": {
+          "$ref": "#/$defs/StateRequirements"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "agent_id",
+        "version",
+        "transport",
+        "protocol",
+        "endpoint",
+        "invoke",
+        "capabilities"
+      ]
+    },
+    "AuthConfig": {
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "secret_ref": {
+          "type": "string"
+        },
+        "scopes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "type"
+      ]
+    },
+    "Capability": {
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "input_schema": {
+          "type": "object"
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "idempotent": {
+          "type": "boolean"
+        },
+        "constraints": {
+          "$ref": "#/$defs/Constraints"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "name",
+        "description",
+        "input_schema",
+        "output_schema",
+        "idempotent"
+      ]
+    },
+    "Constraints": {
+      "properties": {
+        "read_only": {
+          "type": "boolean"
+        },
+        "mutates_state": {
+          "type": "boolean"
+        },
+        "external_io": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "read_only",
+        "mutates_state",
+        "external_io"
+      ]
+    },
+    "HealthEndpointSpec": {
+      "properties": {
+        "method": {
+          "type": "string"
+        },
+        "expected_response": {
+          "type": "object"
+        },
+        "timeout_ms": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "method",
+        "timeout_ms"
+      ]
+    },
+    "InvokeContract": {
+      "properties": {
+        "timeout_ms": {
+          "type": "integer"
+        },
+        "async_supported": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "timeout_ms",
+        "async_supported"
+      ]
+    },
+    "StateRequirements": {
+      "properties": {
+        "required": {
+          "type": "boolean"
+        },
+        "max_bytes": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "required"
+      ]
+    }
+  }
+}

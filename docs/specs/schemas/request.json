@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/Request",
+  "$defs": {
+    "Request": {
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "from": {
+          "type": "string"
+        },
+        "task_id": {
+          "type": "string"
+        },
+        "step_id": {
+          "type": "string"
+        },
+        "capability": {
+          "type": "string"
+        },
+        "input": true,
+        "mode": {
+          "type": "string"
+        },
+        "timeout_ms": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "type",
+        "request_id",
+        "from",
+        "task_id",
+        "step_id",
+        "capability",
+        "input",
+        "mode"
+      ]
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "name": "gaia-monorepo",
+  "private": true,
+  "workspaces": [
+    "libs/sdk-ts",
+    "docs/site"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "sdk:ts": "npm run --workspace=libs/sdk-ts",
+    "docs": "npm run --workspace=docs/site"
+  }
+}

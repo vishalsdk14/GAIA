@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/Response",
+  "$defs": {
+    "Error": {
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "details": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "code",
+        "message",
+        "retryable"
+      ]
+    },
+    "RequestMetrics": {
+      "properties": {
+        "duration_ms": {
+          "type": "integer"
+        },
+        "cost_estimate": {
+          "type": "number"
+        },
+        "tokens_used": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "Response": {
+      "properties": {
+        "request_id": {
+          "type": "string"
+        },
+        "success": {
+          "type": "boolean"
+        },
+        "output": true,
+        "error": {
+          "$ref": "#/$defs/Error"
+        },
+        "job_id": {
+          "type": "string"
+        },
+        "metrics": {
+          "$ref": "#/$defs/RequestMetrics"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "request_id",
+        "success"
+      ]
+    }
+  }
+}
