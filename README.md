@@ -258,14 +258,16 @@ GAIA/
 ├── src/
 │   └── kernel/                    # Go Orchestration Kernel
 │       ├── pkg/
-│       │   ├── core/              # Coordinator, Scheduler, Planner
+│       │   ├── api/               # REST Handlers & WebSocket Stream
+│       │   ├── core/              # Coordinator, Orchestrator, Planner
 │       │   ├── policy/            # CEL Engine & Schema Validator
 │       │   ├── state/             # Tiered Persistence (SQLite)
 │       │   ├── registry/          # Capability Registry & Routing
-│       │   ├── transport/         # A2A, MCP, & Native Adapters
 │       │   ├── types/             # Canonical Kernel Schemas
+│       │   ├── logger/            # Structured Logs & Audit Trail
 │       │   └── common/            # Event Bus & Shared Utilities
-│       └── main.go                # Kernel Entry Point
+│       ├── main.go                # Kernel Entry Point
+│       └── go.mod                 # Go dependencies
 ├── libs/                          # SDKs (Coming soon)
 │   ├── sdk-ts/                    # TypeScript SDK
 │   └── sdk-py/                    # Python SDK
