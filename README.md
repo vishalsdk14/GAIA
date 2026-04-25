@@ -233,7 +233,20 @@ GAIA/
 │   │   └── event-catalog.md
 │   └── rfcs/                      # Design proposals
 │       └── 000-template.md
-├── src/                           # Implementation (coming soon)
+├── src/
+│   └── kernel/                    # Go Orchestration Kernel
+│       ├── pkg/
+│       │   ├── core/              # Coordinator, Scheduler, Planner
+│       │   ├── policy/            # CEL Engine & Schema Validator
+│       │   ├── state/             # Tiered Persistence (SQLite)
+│       │   ├── registry/          # Capability Registry & Routing
+│       │   ├── transport/         # A2A, MCP, & Native Adapters
+│       │   ├── types/             # Canonical Kernel Schemas
+│       │   └── common/            # Event Bus & Shared Utilities
+│       └── main.go                # Kernel Entry Point
+├── libs/                          # SDKs (Coming soon)
+│   ├── sdk-ts/                    # TypeScript SDK
+│   └── sdk-py/                    # Python SDK
 ├── CHANGELOG.md
 ├── CODE_OF_CONDUCT.md
 ├── CONTRIBUTING.md
