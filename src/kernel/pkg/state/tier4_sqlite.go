@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Package state implements the multi-tiered state management architecture for the GAIA kernel.
+// This file specifically implements the persistent SQLite storage for Tier 4 (Managed Agent State),
+// ensuring strict multi-tenant isolation and quota enforcement.
 package state
 
 import (
@@ -132,4 +135,33 @@ func (s *SQLiteStore) DeleteNamespace(agentID string) error {
 		return fmt.Errorf("state: failed to drop namespace: %w", err)
 	}
 	return nil
+}
+
+// ListKeys returns all keys stored by an agent.
+func (s *SQLiteStore) ListKeys(agentID string, limit, offset int) ([]string, error) {
+	rows, err := s.DB.Query(`SELECT state_key FROM agent_state WHERE agent_id = ? ORDER BY state_key LIMIT ? OFFSET ?`, agentID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("state: failed to list keys: %w", err)
+	}
+	defer rows.Close()
+
+	var keys []string
+	for rows.Next() {
+		var key string
+		if err := rows.Scan(&key); err != nil {
+			return nil, err
+		}
+		keys = append(keys, key)
+	}
+	return keys, nil
+}
+
+// GetUsage returns the current byte size of an agent's storage.
+func (s *SQLiteStore) GetUsage(agentID string) (int, error) {
+	var currentSize int
+	err := s.DB.QueryRow(`SELECT COALESCE(SUM(LENGTH(state_data)), 0) FROM agent_state WHERE agent_id = ?`, agentID).Scan(&currentSize)
+	if err != nil {
+		return 0, fmt.Errorf("state: failed to check usage: %w", err)
+	}
+	return currentSize, nil
 }

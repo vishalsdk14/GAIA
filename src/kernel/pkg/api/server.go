@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"gaia/kernel/pkg/core"
 	"gaia/kernel/pkg/registry"
+	"gaia/kernel/pkg/state"
 	"net/http"
 	"time"
 
@@ -30,14 +31,16 @@ type Server struct {
 	router       *chi.Mux
 	orchestrator *core.Orchestrator
 	registry     registry.CapabilityRegistry
+	agentStore   *state.SQLiteStore
 }
 
 // NewServer initializes the HTTP router and wires up the kernel subsystems.
-func NewServer(o *core.Orchestrator, r registry.CapabilityRegistry) *Server {
+func NewServer(o *core.Orchestrator, r registry.CapabilityRegistry, as *state.SQLiteStore) *Server {
 	s := &Server{
 		router:       chi.NewRouter(),
 		orchestrator: o,
 		registry:     r,
+		agentStore:   as,
 	}
 
 	s.setupMiddleware()
@@ -66,6 +69,16 @@ func (s *Server) setupRoutes() {
 
 		// Real-time Streaming
 		r.Get("/stream", s.handleStream)
+	})
+
+	s.router.Route("/internal/v1", func(r chi.Router) {
+		// Managed Agent State (Tier 4)
+		r.Route("/state", func(r chi.Router) {
+			r.Get("/", s.handleListStateKeys)
+			r.Get("/{key}", s.handleGetState)
+			r.Put("/{key}", s.handlePutState)
+			r.Delete("/{key}", s.handleDeleteState)
+		})
 	})
 }
 

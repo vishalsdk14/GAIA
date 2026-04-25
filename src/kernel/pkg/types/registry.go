@@ -35,6 +35,7 @@ const (
 type AgentRecord struct {
 	AgentID          string           `json:"agent_id"`
 	Status           AgentStatus      `json:"status"`
+	Manifest         AgentManifest    `json:"manifest"`
 	TrustScore       float64          `json:"trust_score"`
 	RegisteredAt     time.Time        `json:"registered_at"`
 	LastHealthCheck  time.Time        `json:"last_health_check"`

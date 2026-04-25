@@ -31,6 +31,7 @@ func (r *InMemoryRegistry) Register(manifest *types.AgentManifest) error {
 	record := &types.AgentRecord{
 		AgentID:         manifest.AgentID,
 		Status:          types.AgentStatusActive, // Initial status is Active after handshake
+		Manifest:        *manifest,
 		TrustScore:      1.0,                     // Start with perfect trust
 		RegisteredAt:    time.Now().UTC(),
 		LastHealthCheck: time.Now().UTC(),

@@ -62,7 +62,7 @@ func main() {
 	orch := core.NewOrchestrator(config, reg, taskStore, planner, transport)
 
 	// 5. Initialize & Start API Gateway
-	server := api.NewServer(orch, reg)
+	server := api.NewServer(orch, reg, store)
 	
 	port := ":8080"
 	logger.L.Info("Kernel Gateway starting", "addr", port)

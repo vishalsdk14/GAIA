@@ -12,6 +12,22 @@ This document defines the external-facing Application Programming Interface (API
 
 ---
 
+## Implementation Status
+
+| Endpoint | Method | Status | Description |
+| :--- | :--- | :--- | :--- |
+| `/api/v1/tasks` | `POST` | ✅ Complete | Submits goal to Orchestrator |
+| `/api/v1/tasks/{id}` | `GET` | ✅ Complete | Returns current task status/plan |
+| `/api/v1/tasks/{id}` | `DELETE` | 🔲 Pending | Cancellation logic |
+| `/api/v1/tasks/{id}/state` | `GET` | 🔲 Pending | Tier 1 state retrieval |
+| `/api/v1/registry/agents` | `GET` | ✅ Complete | Lists all registered agents |
+| `/api/v1/registry/capabilities`| `GET` | ✅ Complete | Lists available capability names |
+| `/api/v1/stream` | `WS` | ✅ Complete | Real-time event streaming |
+| `/api/v1/steps/{id}/approve` | `POST` | 🔲 Pending | Manual approval gate |
+| `/api/v1/admin/audit-logs` | `GET` | 🔲 Pending | Audit trail retrieval |
+
+---
+
 ## 1. REST Endpoints
 
 The Kernel exposes a standard HTTP REST API for synchronous operations. All endpoints expect and return `application/json`.
