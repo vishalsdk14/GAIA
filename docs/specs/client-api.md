@@ -24,6 +24,7 @@ This document defines the external-facing Application Programming Interface (API
 | `/api/v1/registry/capabilities`| `GET` | ✅ Complete | Lists available capability names |
 | `/api/v1/stream` | `WS` | ✅ Complete | Real-time event streaming |
 | `/api/v1/tasks/{id}/steps/{stepID}/approve` | `POST` | ✅ Complete | Manual approval gate |
+| `/api/v1/tasks/{id}/plan` | `PUT` | ✅ Complete | Manual plan override |
 | `/api/v1/admin/audit-logs` | `GET` | 🔲 Pending | Audit trail retrieval |
 
 ---

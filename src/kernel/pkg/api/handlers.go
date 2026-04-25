@@ -83,3 +83,20 @@ func (s *Server) handleApproveStep(w http.ResponseWriter, r *http.Request) {
 
 	jsonResponse(w, http.StatusOK, map[string]string{"status": "approved"})
 }
+
+func (s *Server) handleUpdatePlan(w http.ResponseWriter, r *http.Request) {
+	taskID := chi.URLParam(r, "taskID")
+	
+	var newPlan []types.Step
+	if err := json.NewDecoder(r.Body).Decode(&newPlan); err != nil {
+		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "Invalid plan format"})
+		return
+	}
+
+	if err := s.orchestrator.UpdatePlan(taskID, newPlan); err != nil {
+		jsonResponse(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	jsonResponse(w, http.StatusOK, map[string]string{"status": "plan updated"})
+}

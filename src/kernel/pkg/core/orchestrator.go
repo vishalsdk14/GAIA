@@ -115,3 +115,16 @@ func (o *Orchestrator) ApproveStep(taskID, stepID string) error {
 
 	return coord.ApproveStep(stepID)
 }
+
+// UpdatePlan proxies the plan modification request to the active coordinator.
+func (o *Orchestrator) UpdatePlan(taskID string, newPlan []types.Step) error {
+	o.mu.RLock()
+	coord, ok := o.activeTasks[taskID]
+	o.mu.RUnlock()
+
+	if !ok {
+		return fmt.Errorf("orchestrator: task %s is not currently active", taskID)
+	}
+
+	return coord.UpdatePlan(newPlan)
+}

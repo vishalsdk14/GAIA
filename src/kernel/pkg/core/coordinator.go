@@ -518,3 +518,34 @@ func (c *Coordinator) ApproveStep(stepID string) error {
 	}
 	return fmt.Errorf("coordinator: step %s not found in plan", stepID)
 }
+
+// UpdatePlan allows manual modification of the task plan mid-execution.
+// This implements the "Manual Overrides" requirement for Phase 9.
+func (c *Coordinator) UpdatePlan(newPlan []types.Step) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// Validation: Ensure we don't modify steps that are already 'done' or 'running'
+	// in a way that breaks consistency (simple implementation for now).
+	statusMap := make(map[string]types.StepStatus)
+	for _, step := range c.task.Plan {
+		statusMap[step.StepID] = step.Status
+	}
+
+	for _, newStep := range newPlan {
+		if currentStatus, exists := statusMap[newStep.StepID]; exists {
+			if (currentStatus == types.StepStatusDone || currentStatus == types.StepStatusExecuting) && 
+				newStep.Status != currentStatus {
+				return fmt.Errorf("coordinator: cannot modify status of step %s (currently %s)", newStep.StepID, currentStatus)
+			}
+		}
+	}
+
+	c.task.Plan = newPlan
+	c.log.Info("Task plan updated manually")
+	
+	if c.taskStore != nil {
+		return c.taskStore.SaveTask(c.task)
+	}
+	return nil
+}
