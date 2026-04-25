@@ -71,3 +71,15 @@ func (s *Server) handleListCapabilities(w http.ResponseWriter, r *http.Request) 
 	caps := s.registry.ListCapabilities()
 	jsonResponse(w, http.StatusOK, caps)
 }
+
+func (s *Server) handleApproveStep(w http.ResponseWriter, r *http.Request) {
+	taskID := chi.URLParam(r, "taskID")
+	stepID := chi.URLParam(r, "stepID")
+	
+	if err := s.orchestrator.ApproveStep(taskID, stepID); err != nil {
+		jsonResponse(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	jsonResponse(w, http.StatusOK, map[string]string{"status": "approved"})
+}

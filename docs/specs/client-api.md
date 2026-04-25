@@ -23,7 +23,7 @@ This document defines the external-facing Application Programming Interface (API
 | `/api/v1/registry/agents` | `GET` | ✅ Complete | Lists all registered agents |
 | `/api/v1/registry/capabilities`| `GET` | ✅ Complete | Lists available capability names |
 | `/api/v1/stream` | `WS` | ✅ Complete | Real-time event streaming |
-| `/api/v1/steps/{id}/approve` | `POST` | 🔲 Pending | Manual approval gate |
+| `/api/v1/tasks/{id}/steps/{stepID}/approve` | `POST` | ✅ Complete | Manual approval gate |
 | `/api/v1/admin/audit-logs` | `GET` | 🔲 Pending | Audit trail retrieval |
 
 ---
@@ -52,8 +52,8 @@ The Kernel exposes a standard HTTP REST API for synchronous operations. All endp
 * **`GET /api/v1/tasks/{task_id}/state`**
   * **Purpose**: Fetch the current Tier 1 `ActiveState` (accumulated step outputs).
 
-* **`POST /api/v1/steps/{step_id}/approve`**
-  * **Purpose**: Manually unblock a step that is in the `APPROVAL_REQUIRED` failure mode (see security.md).
+* **`POST /api/v1/tasks/{task_id}/steps/{step_id}/approve`**
+  * **Purpose**: Manually unblock a step that is in the `AWAITING_APPROVAL` mode.
   * **Response**: `200 OK`. Step transitions back to `pending`.
 
 ### 1.3 Registry & Administration

@@ -102,3 +102,16 @@ func (o *Orchestrator) GetTask(taskID string) (*types.Task, error) {
 
 	return o.taskStore.GetTask(taskID)
 }
+
+// ApproveStep proxies the approval request to the active coordinator for the given task.
+func (o *Orchestrator) ApproveStep(taskID, stepID string) error {
+	o.mu.RLock()
+	coord, ok := o.activeTasks[taskID]
+	o.mu.RUnlock()
+
+	if !ok {
+		return fmt.Errorf("orchestrator: task %s is not currently active", taskID)
+	}
+
+	return coord.ApproveStep(stepID)
+}

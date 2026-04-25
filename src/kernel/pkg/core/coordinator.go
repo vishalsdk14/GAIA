@@ -312,6 +312,17 @@ func (c *Coordinator) executeDAG() error {
 				return
 			}
 
+			// Phase 5.0.1: Human-in-the-Loop Simulation
+			// If a capability is marked as "RESTRICTED_ACTION", pause execution for approval.
+			if step.Capability == "RESTRICTED_ACTION" {
+				c.mu.Lock()
+				step.Status = types.StepStatusAwaitingApproval
+				c.mu.Unlock()
+				c.log.Warn("Step requires human approval", "step_id", step.StepID)
+				c.events.Emit(common.Event{Type: types.EventStepApprovalRequired, TaskID: c.task.TaskID, StepID: step.StepID})
+				return
+			}
+
 			// Phase 5.1: Schema Validation
 			// Find capability schema in manifest
 			var capSchema map[string]interface{}
@@ -471,4 +482,39 @@ func (c *Coordinator) HandleAsyncCompletion(jobID string, completion *types.Asyn
 	}
 
 	return nil
+}
+
+// ApproveStep manually unblocks a step that is in the StepStatusAwaitingApproval state.
+// This allows the task loop to proceed with the next Topological dispatch iteration.
+func (c *Coordinator) ApproveStep(stepID string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	for i := range c.task.Plan {
+		if c.task.Plan[i].StepID == stepID {
+			if c.task.Plan[i].Status != types.StepStatusAwaitingApproval {
+				return fmt.Errorf("coordinator: step %s is not awaiting approval (current status: %s)", stepID, c.task.Plan[i].Status)
+			}
+			
+			// Move back to pending so GetReadySteps can pick it up
+			c.task.Plan[i].Status = types.StepStatusPending
+			c.log.Info("Step approved by human", "step_id", stepID)
+			
+			// Checkpoint the updated step status
+			if c.taskStore != nil {
+				if err := c.taskStore.SaveTask(c.task); err != nil {
+					c.log.Error("Failed to checkpoint approval", "step_id", stepID, "error", err)
+				}
+			}
+
+			// Emit event for real-time dashboard updates
+			c.events.Emit(common.Event{
+				Type:   types.EventStepStarted, // We emit Started or a new EventStepApproved
+				TaskID: c.task.TaskID,
+				StepID: stepID,
+			})
+			return nil
+		}
+	}
+	return fmt.Errorf("coordinator: step %s not found in plan", stepID)
 }

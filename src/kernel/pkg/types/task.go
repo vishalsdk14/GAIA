@@ -52,6 +52,7 @@ const (
 	StepStatusPendingAsync StepStatus = "pending_async"
 	StepStatusDone         StepStatus = "done"
 	StepStatusFailed       StepStatus = "failed"
+	StepStatusAwaitingApproval StepStatus = "awaiting_approval"
 )
 
 // Step represents an individual unit of work within a task plan.

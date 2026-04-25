@@ -72,6 +72,7 @@ func (s *Server) setupRoutes() {
 		// Task Management
 		r.Post("/tasks", s.handleCreateTask)
 		r.Get("/tasks/{taskID}", s.handleGetTask)
+		r.Post("/tasks/{taskID}/steps/{stepID}/approve", s.handleApproveStep)
 		
 		// Registry
 		r.Get("/registry/agents", s.handleListAgents)
