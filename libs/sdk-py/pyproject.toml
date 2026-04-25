@@ -1,0 +1,9 @@
+[project]
+name = "gaia-sdk"
+version = "0.1.0"
+description = "Official GAIA Agent SDK for Python"
+dependencies = []
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"

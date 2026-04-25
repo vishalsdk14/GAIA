@@ -5,7 +5,7 @@
 ### The Orchestration Kernel for Autonomous Agents
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Status: Design Phase](https://img.shields.io/badge/Status-Design%20Phase-red.svg)](#current-status)
+[![Status: Implementation Phase](https://img.shields.io/badge/Status-Implementation%20Phase-green.svg)](#current-status)
 [![Protocol: A2A](https://img.shields.io/badge/Protocol-Google%20A2A-4285F4.svg)](https://github.com/google/A2A)
 [![Protocol: MCP](https://img.shields.io/badge/Protocol-Anthropic%20MCP-D97706.svg)](https://modelcontextprotocol.io/)
 
@@ -124,40 +124,61 @@ GAIA natively consumes **Google A2A** (agent-to-agent) and **Anthropic MCP** (ag
 
 ## Current Status
 
-> **⚠️ GAIA is in the Design & Specification phase.**
->
-> No runtime code exists yet. We are building the technical specifications, schemas, and contributor documentation to ensure the implementation is architecturally sound from Day 1.
->
-> **This is intentional.** A kernel must be designed before it is coded.
+> **⚠️ GAIA is in the Implementation phase.**
 
 ### What exists today
 
 | Artifact | Status | Description |
 | :--- | :---: | :--- |
 | [Technical Specification](docs/design.md) | ✅ Complete | 1200+ line design document covering the full kernel architecture |
-| Core Data Schemas | 🔲 Not started | JSON Schema definitions for Manifest, Task, Step, Response, Error |
-| Lifecycle State Machines | 🔲 Not started | Formal state diagrams for Task and Step lifecycles |
-| Transport Adapter Specs | 🔲 Not started | A2A and MCP protocol mapping specifications |
-| Security & Policy Spec | 🔲 Not started | Firewall rules, sandbox definitions, trust model |
-| Implementation (Code) | 🔲 Not started | Will begin after specifications are reviewed and approved |
+| Component Specifications | ✅ Complete | 12 detailed documents covering schemas, control loops, and security |
+| Tech Stack Decision | ✅ Complete | Polyglot architecture (Go Core, TS/Python SDKs, Rust modules) |
+| Repository Scaffolding | 🟡 In Progress | Modular monorepo initialization |
+| Core Implementation (Code) | 🔲 Not started | Will begin once scaffolding is complete |
+
+---
+
+## 🛠 Requirements & Setup
+
+GAIA is a polyglot project. To initialize the repository and begin development, you need the following installed:
+
+* **Go 1.22+**: For the core kernel.
+* **Node.js 20+ & NPM**: For the TypeScript SDK and protocol adapters.
+* **Python 3.10+**: For the Python SDK and AI agent integrations.
+* **Git**: For version control.
+
+### Quick Start (Scaffolding)
+
+To initialize the repository structure and language modules, run:
+
+```bash
+./scripts/init.sh
+```
+
+This will create the following isolated modules:
+* `src/kernel/` (Go)
+* `libs/sdk-ts/` (TypeScript)
+* `libs/sdk-py/` (Python)
 
 ---
 
 ## Roadmap
 
-### Phase 1: Specification (current)
+### Phase 1: Specification (Complete)
 - [x] Core architecture design
 - [x] A2A + MCP interoperability design
-- [ ] Data model & JSON Schema definitions
-- [ ] Lifecycle state machine specs
-- [ ] Transport adapter specs
-- [ ] Security & policy specs
+- [x] Data model & JSON Schema definitions
+- [x] Lifecycle state machine specs
+- [x] Transport adapter specs
+- [x] Security & policy specs
+- [x] Tech Stack & Polyglot strategy
 
-### Phase 2: Foundation
-- [ ] Project scaffolding & build system
-- [ ] Core TypeScript interfaces
-- [ ] Capability Registry implementation
-- [ ] Basic Control Loop (sync execution)
+### Phase 2: Foundation (current)
+- [/] Project scaffolding & modular monorepo setup
+- [ ] Core kernel types (Go)
+- [ ] Capability Registry (Go)
+- [ ] Basic Control Loop (Go)
+- [ ] SDK scaffolding (TS/Python)
 
 ### Phase 3: Runtime
 - [ ] Async execution & DAG scheduler

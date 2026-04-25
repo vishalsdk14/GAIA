@@ -1,0 +1,57 @@
+# Binary / Executables
+bin/
+dist/
+out/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Go
+src/kernel/vendor/
+*.test
+*.out
+
+# Node.js
+libs/sdk-ts/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.env
+
+# Python
+libs/sdk-py/__pycache__/
+libs/sdk-py/*.py[cod]
+libs/sdk-py/*$py.class
+libs/sdk-py/.venv/
+libs/sdk-py/env/
+libs/sdk-py/build/
+libs/sdk-py/develop-eggs/
+libs/sdk-py/dist/
+libs/sdk-py/downloads/
+libs/sdk-py/eggs/
+libs/sdk-py/.eggs/
+libs/sdk-py/lib/
+libs/sdk-py/lib64/
+libs/sdk-py/parts/
+libs/sdk-py/sdist/
+libs/sdk-py/var/
+libs/sdk-py/wheels/
+libs/sdk-py/pip-wheel-metadata/
+libs/sdk-py/share/python-wheels/
+libs/sdk-py/*.egg-info/
+libs/sdk-py/.installed.cfg
+libs/sdk-py/*.egg
+libs/sdk-py/MANIFEST
+
+# IDE / System
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.project
+.settings/
+.classpath

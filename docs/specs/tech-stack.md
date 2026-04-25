@@ -52,15 +52,18 @@ To maintain extreme throughput, the kernel avoids cross-language FFI (Foreign Fu
 
 ---
 
-## 4. Repository Structure
+### 4.1 Monorepo Strategy
+GAIA uses a **Modular Monorepo** approach. To maintain clean boundaries between different technology stacks and prevent dependency leakage:
+* **Isolated Modules**: Each sub-project (Kernel, TS SDK, Python SDK) is its own isolated language module (e.g., its own `go.mod`, `package.json`, or `pyproject.toml`).
+* **Root Cleanliness**: The root directory is reserved for documentation, high-level project metadata, and repository-wide automation scripts. No source code or language-specific configuration resides in the root.
 
-The physical monorepo structure reflects this polyglot strategy:
-
+### 4.2 Directory Layout
 ```text
 /gaia
-├── src/kernel/           # Core Orchestrator (Go)
-├── libs/sdk-ts/          # Agent SDK (TypeScript)
-├── libs/sdk-py/          # Agent SDK (Python)
+├── src/kernel/           # Core Orchestrator (Go Module: gaia/kernel)
+├── libs/sdk-ts/          # Agent SDK (NPM Package: @gaia/sdk)
+├── libs/sdk-py/          # Agent SDK (Python Package: gaia-sdk)
+├── scripts/              # Repository automation and init scripts
 └── docs/specs/           # The Source of Truth (Markdown/JSON Schema)
 ```
 
