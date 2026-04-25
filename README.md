@@ -11,7 +11,7 @@
 
 **GAIA is a deterministic execution kernel that turns a probabilistic planner and a swarm of untrusted, plug-in agents into a reliable, goal-completing system.**
 
-[Design Spec](docs/design.md) · [Contributing](CONTRIBUTING.md) · [Issues](https://github.com/vishalsdk14/GAIA/issues) · [Discussions](https://github.com/vishalsdk14/GAIA/discussions)
+[Design Spec](docs/design.md) · [Lifecycle Handbook](docs/guides/task-lifecycle-handbook.md) · [Kernel Internals](docs/site/docs/internals/index.md) · [Contributing](CONTRIBUTING.md)
 
 </div>
 
@@ -131,6 +131,8 @@ GAIA natively consumes **Google A2A** (agent-to-agent) and **Anthropic MCP** (ag
 | Artifact | Status | Description |
 | :--- | :---: | :--- |
 | [Technical Specification](docs/design.md) | ✅ Complete | 1200+ line design document covering the full kernel architecture |
+| [Lifecycle Handbook](docs/guides/task-lifecycle-handbook.md) | ✅ Complete | A narrative guide to the journey of a goal through the kernel |
+| [Kernel Internals Guide](docs/site/docs/internals/index.md) | ✅ Complete | A 10-chapter deep dive into the GAIA architecture and modules |
 | Component Specifications | ✅ Complete | 12 detailed documents covering schemas, control loops, and security |
 | Core Implementation | ✅ Complete | Go Kernel with 10-phase control loop, SQLite persistence, and CEL Policy Engine |
 | Ecosystem & SDKs | ✅ Complete | Type-safe TS/Python SDKs, Unified CLI, and Docusaurus site |
