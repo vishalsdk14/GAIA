@@ -144,7 +144,12 @@ All specification documents in `docs/` must follow these rules:
 
 GAIA uses a **Polyglot Architecture**. The Core Kernel is implemented in Go, while Agent SDKs are provided in TypeScript and Python.
 
-### 1. Core Kernel (Go)
+### 1. Documentation & Comments (Strict Policy)
+* **Mandatory Comments**: Code without comprehensive comments will **not be accepted**. This is a strict rule for all PRs.
+* **Copyright**: Every source file must begin with the standard GAIA Contributors MIT License header.
+* **Godoc/TSDoc**: Every exported function, interface, and struct must have a documentation comment explaining *why* it exists, not just *what* it does.
+
+### 2. Core Kernel (Go)
 * **Language**: Go 1.22+
 * **Concurrency**: Use `goroutines` and `channels` for the control loop. Avoid shared state/mutexes unless performance-critical.
 * **Error Handling**: Use the standard `if err != nil` pattern. Wrap errors with context using `fmt.Errorf("context: %w", err)`. Use GAIA error codes from `docs/reference/error-codes.md`.
@@ -153,7 +158,7 @@ GAIA uses a **Polyglot Architecture**. The Core Kernel is implemented in Go, whi
     - Use `tidwall/gjson` for zero-allocation JSON traversal during interpolation.
 * **Formatting**: All code must be formatted with `gofmt` and linted with `golangci-lint`.
 
-### 2. Agent SDKs (TypeScript / Python)
+### 3. Agent SDKs (TypeScript / Python)
 * **TypeScript**: 
     - No `any`. 
     - All types must be generated from the `docs/specs/schemas.md`.
@@ -163,7 +168,7 @@ GAIA uses a **Polyglot Architecture**. The Core Kernel is implemented in Go, whi
     - Follow PEP 8 style guidelines.
     - Use `asyncio` for non-blocking agent communication.
 
-### 3. Testing Requirements
+### 4. Testing Requirements
 * **Unit Tests**: Mandatory for all kernel phases (Phase 1-10) and interpolation logic.
 * **Integration Tests**: Required for all transport adapters (HTTP, gRPC, WebSocket).
 * **Fuzzing**: Used for the CEL Policy Engine and JSON schema validation logic.

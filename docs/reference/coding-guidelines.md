@@ -53,11 +53,24 @@ SDKs must make it effortless for developers to build secure GAIA agents.
 
 ---
 
-## 3. Documentation & Comments
+## 3. Documentation & Comments (Mandatory)
 
-* **Godoc/TSDoc**: Every exported function, interface, and struct must have a documentation comment.
-* **Why**: Comments should explain the *why*, not the *how*. 
-* **Spec References**: If a function implements a specific phase of the Control Loop, reference it: `// Implements Phase 6 (Interpolation) of docs/specs/control-loop.md`.
+**Code without comprehensive comments will not be accepted during PR review.** We are building an open-source project; the code must be readable by developers who did not write it.
+
+### 3.1 Copyright Headers
+Every source file (`.go`, `.ts`, `.py`, `.sh`) **must** begin with the standard GAIA Contributors MIT License header.
+
+### 3.2 Package & File-Level Documentation
+Every file must contain a high-level comment block explaining its architectural purpose.
+- **Go**: `// Package [name] implements...`
+- **TS/Python**: A block comment at the top of the file after the copyright.
+
+### 3.3 Function-Level Documentation
+Every struct, interface, and function must have an accompanying documentation block.
+- Comments must explain the **"Why"**, not just the **"What"**.
+- If a function operates in $O(1)$ time, document why that matters.
+- If a function enforces a security boundary, document the threat model it mitigates.
+- **Spec References**: If a function implements a specific phase of the Control Loop, reference it: `// Implements Phase 6 (Interpolation) of docs/specs/control-loop.md`.
 
 ---
 
