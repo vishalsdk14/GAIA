@@ -117,6 +117,7 @@ stateDiagram-v2
 3. `error` must only be set when status is `failed`.
 4. `retry_count` must increment on every `failed → pending` transition.
 5. `assigned_agent` must be set when entering `running` and cleared on `failed → pending` (agent may change on retry).
+6. `job_id` must be set when status is `running` (async mode) or `pending_async`. On `pending_async → done`, it is cleared. On `pending_async → failed`, it is retained for logging. On `failed → pending` (retry), it must be cleared.
 
 ### 2.5 Edge Cases
 
