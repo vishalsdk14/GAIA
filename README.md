@@ -175,12 +175,16 @@ This will create the following isolated modules:
 
 ### Phase 2: Foundation (current)
 - [/] Project scaffolding & modular monorepo setup
-- [ ] Core kernel types (Go)
-- [ ] Capability Registry (Go)
-- [ ] Basic Control Loop (Go)
+- [x] Core kernel types (Go)
+- [x] State Store (Tier 1/4 In-Memory)
+- [x] Capability Registry (Go)
+- [ ] Control Loop Skeleton (10-phase state machine)
+- [ ] Dynamic LLM Planner Adapters (Local/Cloud support)
 - [ ] SDK scaffolding (TS/Python)
 
 ### Phase 3: Runtime
+- [ ] Migrate Tier 4 `AgentStateStore` from in-memory to SQLite/PostgreSQL
+- [ ] Actual LLM API implementations (Ollama, OpenAI, etc.)
 - [ ] Async execution & DAG scheduler
 - [ ] State snapshotting & recovery
 - [ ] MCP Adapter
