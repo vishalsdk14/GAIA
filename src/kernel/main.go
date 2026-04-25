@@ -48,15 +48,6 @@ func main() {
 		log.Fatalf("Critical: Failed to initialize SQLite store: %v", err)
 	}
 
-	// Phase 8: Encryption at Rest
-	// If GAIA_ENCRYPTION_KEY is provided, enable transparent AES-GCM encryption for Tier 4 state.
-	if encKey := os.Getenv("GAIA_ENCRYPTION_KEY"); encKey != "" {
-		if err := store.EnableEncryption([]byte(encKey)); err != nil {
-			log.Fatalf("Critical: Failed to enable encryption: %v", err)
-		}
-		logger.L.Info("Encryption at Rest enabled for Tier 4 storage")
-	}
-
 	taskStore, _ := state.NewTaskStore(store.DB)
 
 	// 2. Initialize Registry
@@ -72,15 +63,27 @@ func main() {
 	// 4. Initialize Orchestrator (Goal Manager)
 	orch := core.NewOrchestrator(config, reg, taskStore, planner, transport)
 
-	// 5. Initialize & Start API Gateway
+	// 5. Initialize Secret Registry (Phase 8)
+	secrets := core.NewSecretRegistry()
+
+	// 6. Initialize & Start API Gateway
 	server := api.NewServer(orch, reg, store)
 
-	// Phase 8: Configure Security Modes
+	// Phase 8: Encryption at Rest
+	// Use the SecretRegistry to fetch the master encryption key.
+	if encKey, err := secrets.GetSecret("ENCRYPTION_KEY"); err == nil {
+		if err := store.EnableEncryption([]byte(encKey)); err != nil {
+			log.Fatalf("Critical: Failed to enable encryption: %v", err)
+		}
+		logger.L.Info("Encryption at Rest enabled for Tier 4 storage")
+	}
+
+	// Phase 8: Configure Security Modes & JWT
 	server.AuthMode = getEnv("GAIA_AUTH_MODE", "legacy")
 	
 	// JWT Configuration (Standard/Strict Mode)
 	server.AuthJWTEnabled = getEnv("GAIA_AUTH_JWT_ENABLED", "false") == "true"
-	if jwtSecret := os.Getenv("GAIA_JWT_SECRET"); jwtSecret != "" {
+	if jwtSecret, err := secrets.GetSecret("JWT_SECRET"); err == nil {
 		server.JWTSecret = []byte(jwtSecret)
 	}
 
