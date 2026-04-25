@@ -38,13 +38,17 @@ While the Core is in Go, the agents that connect to GAIA can be written in any l
 
 ---
 
-## 3. High-Performance Modules (Rust / WebAssembly)
+## 3. High-Performance Internal Modules
 
-For specific, isolated modules that require extreme performance or absolute memory safety, the Kernel leverages **Rust** compiled to **WebAssembly (Wasm)**.
+To maintain extreme throughput, the kernel avoids cross-language FFI (Foreign Function Interfaces) or WebAssembly boundaries on the hot path, relying instead on highly optimized native Go libraries.
 
-### 3.1 The Policy Engine (CEL)
-* **Implementation**: The CEL (Common Expression Language) evaluator used in Phase 5 of the Control Loop can be implemented in Rust and injected into the Go Kernel via WebAssembly.
-* **Why**: Policy evaluations block every inbound and outbound request. They must execute in microseconds. Rust provides zero-cost abstractions and prevents entire classes of memory bugs, ensuring the Kernel's "Firewall" is mathematically sound.
+### 3.1 The Policy Engine (`cel-go`)
+* **Implementation**: The CEL policies (Phase 5 of the Control Loop) are evaluated using Google's official `cel-go` library.
+* **Why**: Policy evaluations block every inbound and outbound request. Using native `cel-go` compiles rules to an AST and evaluates them in nanoseconds with zero serialization overhead (avoiding the millisecond penalty of crossing a Wasm memory boundary).
+
+### 3.2 Zero-Allocation JSON Interpolation
+* **Implementation**: Dynamic step interpolation (resolving `{{step.output}}`) is handled via specialized zero-allocation JSON parsers (e.g., `tidwall/gjson`).
+* **Why**: Using Go's standard `encoding/json` to unmarshal arbitrary dynamic output into `map[string]interface{}` generates massive Garbage Collection (GC) churn. Direct byte-slice traversal prevents heap fragmentation and keeps dispatcher latency flat.
 
 ---
 
@@ -55,7 +59,6 @@ The physical monorepo structure reflects this polyglot strategy:
 ```text
 /gaia
 ├── src/kernel/           # Core Orchestrator (Go)
-├── src/policy/           # High-speed evaluators (Rust/Wasm)
 ├── libs/sdk-ts/          # Agent SDK (TypeScript)
 ├── libs/sdk-py/          # Agent SDK (Python)
 └── docs/specs/           # The Source of Truth (Markdown/JSON Schema)
