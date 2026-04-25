@@ -44,6 +44,9 @@ type KernelConfig struct {
 	
 	// MaxConcurrentTasks defines the maximum number of parallel tasks the kernel will process.
 	MaxConcurrentTasks int `json:"max_concurrent_tasks"`
+
+	// DBPath is the location of the persistent SQLite database for the kernel.
+	DBPath string `json:"db_path"`
 }
 
 // DefaultConfig returns a sane set of defaults for the GAIA Kernel.
@@ -53,5 +56,6 @@ func DefaultConfig() *KernelConfig {
 		PlannerEndpoint:    "http://localhost:11434/api/generate", // Default Ollama endpoint
 		MaxReplans:         2,
 		MaxConcurrentTasks: 10,
+		DBPath:             "./data/gaia_state.db",
 	}
 }
