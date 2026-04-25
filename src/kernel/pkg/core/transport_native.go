@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"gaia/kernel/pkg/types"
+	"log/slog"
 	"net/http"
 	"time"
 )
@@ -51,9 +52,13 @@ func (t *NativeTransport) Dispatch(req *types.Request, agent *types.AgentManifes
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(httpReq)
 	if err != nil {
+		slog.Error("NativeTransport: agent unavailable", "endpoint", agent.Endpoint, "error", err)
 		return nil, fmt.Errorf("transport: %w: %v", fmt.Errorf(string(types.ErrorCodeAgentUnavailable)), err)
 	}
 	defer resp.Body.Close()
+
+	duration := time.Since(startTime)
+	slog.Info("NativeTransport: received response", "endpoint", agent.Endpoint, "status", resp.StatusCode, "duration_ms", duration.Milliseconds())
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("transport: agent returned status %d", resp.StatusCode)

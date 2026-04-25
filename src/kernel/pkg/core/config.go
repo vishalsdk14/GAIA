@@ -53,6 +53,9 @@ type KernelConfig struct {
 
 	// DBPath is the location of the persistent SQLite database for the kernel.
 	DBPath string `json:"db_path"`
+
+	// LogLevel defines the verbosity of the kernel logs (e.g., 'DEBUG', 'INFO', 'ERROR').
+	LogLevel string `json:"log_level"`
 }
 
 // DefaultConfig returns a sane set of defaults for the GAIA Kernel.
@@ -65,5 +68,6 @@ func DefaultConfig() *KernelConfig {
 		MaxConcurrentTasks: 10,
 		MaxConcurrentPerAgent: 3,
 		DBPath:             "./data/gaia_state.db",
+		LogLevel:           "INFO",
 	}
 }

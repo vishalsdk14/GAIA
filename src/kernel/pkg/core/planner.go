@@ -18,8 +18,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
+
 	"gaia/kernel/pkg/types"
 )
 
@@ -40,6 +42,7 @@ type LocalLLMPlanner struct {
 
 // GeneratePlan for LocalLLMPlanner implements the Ollama API (/api/generate) to fetch a JSON plan.
 func (p *LocalLLMPlanner) GeneratePlan(goal string, state map[string]interface{}, capabilities []types.Capability) (*types.PlanRecord, error) {
+	slog.Debug("Ollama: Generating plan", "goal", goal)
 	userPrompt, err := BuildUserPrompt(goal, state, capabilities)
 	if err != nil {
 		return nil, err
@@ -63,11 +66,13 @@ func (p *LocalLLMPlanner) GeneratePlan(goal string, state map[string]interface{}
 	client := &http.Client{Timeout: 60 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
+		slog.Error("Ollama connection failed", "error", err)
 		return nil, fmt.Errorf("core: %w: ollama request failed: %v", fmt.Errorf(string(types.ErrorCodeInternalError)), err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		slog.Warn("Ollama returned non-200", "status", resp.StatusCode)
 		return nil, fmt.Errorf("core: ollama returned status %d", resp.StatusCode)
 	}
 

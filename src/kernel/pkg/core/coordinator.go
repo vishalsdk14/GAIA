@@ -16,9 +16,12 @@ package core
 
 import (
 	"fmt"
+	"gaia/kernel/pkg/common"
+	"gaia/kernel/pkg/logger"
 	"gaia/kernel/pkg/registry"
 	"gaia/kernel/pkg/state"
 	"gaia/kernel/pkg/types"
+	"log/slog"
 	"sync"
 	"time"
 )
@@ -34,17 +37,21 @@ type Coordinator struct {
 	registry registry.CapabilityRegistry
 	planner  Planner
 	transport AgentTransport
+	log      *slog.Logger
+	events   *common.EventBus
 }
 
 // NewCoordinator initializes a new task coordinator with the required kernel subsystems.
 func NewCoordinator(t *types.Task, c *KernelConfig, r registry.CapabilityRegistry, p Planner, trans AgentTransport) *Coordinator {
 	return &Coordinator{
-		task:     t,
-		config:   c,
-		stateMgr: state.NewActiveStateManager(t.TaskID),
-		registry: r,
-		planner:  p,
+		task:      t,
+		config:    c,
+		stateMgr:  state.NewActiveStateManager(t.TaskID),
+		registry:  r,
+		planner:   p,
 		transport: trans,
+		log:       logger.Sub("task_id", t.TaskID),
+		events:    common.GetEventBus(),
 	}
 }
 
@@ -100,11 +107,11 @@ func (c *Coordinator) phase1Submission() error {
 		return fmt.Errorf("core: task goal cannot be empty")
 	}
 
-	// Transition Task: pending -> planning
 	c.task.Status = types.TaskStatusPlanning
 	c.task.UpdatedAt = time.Now().UTC()
 	
-	// TODO: Emit TASK_PLANNING event
+	c.log.Info("Task transitioned to planning")
+	c.events.Emit(common.Event{Type: types.EventTaskPlanning, TaskID: c.task.TaskID})
 	return nil
 }
 
@@ -132,23 +139,25 @@ func (c *Coordinator) phase2Planning() error {
 		}
 
 		plan, err := c.planner.GeneratePlan(goal, activeState, nil)
-		if err == nil {
-			// Success!
-			c.task.Status = types.TaskStatusExecuting
-			c.task.UpdatedAt = time.Now().UTC()
-			c.task.Plan = plan.Steps
-			return nil
+		if err != nil {
+			// Check if the error is a schema violation (malformed JSON)
+			lastErr = err
+			c.log.Warn("Planner returned invalid JSON", "error", err)
+			if types.ErrorCode(err.Error()) == types.ErrorCodeSchemaViolation || attempt == 0 {
+				correctionPrompt = BuildCorrectionPrompt("INVALID_JSON_HERE", err.Error())
+				c.events.Emit(common.Event{Type: types.EventPlanRejected, TaskID: c.task.TaskID})
+				continue
+			}
+			break
 		}
 
-		// Check if the error is a schema violation (malformed JSON)
-		lastErr = err
-		if types.ErrorCode(err.Error()) == types.ErrorCodeSchemaViolation || attempt == 0 {
-			// In foundation phase, we simulate the correction prompt build
-			correctionPrompt = BuildCorrectionPrompt("INVALID_JSON_HERE", err.Error())
-			fmt.Printf("Coordinator [task=%s]: Retrying with correction prompt (attempt %d)\n", c.task.TaskID, attempt+1)
-			continue
-		}
-		break
+		// Success!
+		c.task.Status = types.TaskStatusExecuting
+		c.task.UpdatedAt = time.Now().UTC()
+		c.task.Plan = plan.Steps
+		c.log.Info("Plan generated successfully", "step_count", len(plan.Steps))
+		c.events.Emit(common.Event{Type: types.EventPlanGenerated, TaskID: c.task.TaskID})
+		return nil
 	}
 
 	return fmt.Errorf("core: planner failed after retries: %w", lastErr)
@@ -163,14 +172,19 @@ func (c *Coordinator) isTerminal() bool {
 		   c.task.Status == types.TaskStatusCancelled
 }
 
-// failTask is a helper to transition a task to the 'failed' state and record the error.
 func (c *Coordinator) failTask(err error) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	
 	c.task.Status = types.TaskStatusFailed
 	c.task.UpdatedAt = time.Now().UTC()
-	// TODO: Record error in task and emit TASK_FAILED event
+	
+	c.log.Error("Task failed", "error", err)
+	c.events.Emit(common.Event{
+		Type:    types.EventTaskFailed,
+		TaskID:  c.task.TaskID,
+		Payload: map[string]interface{}{"error": err.Error()},
+	})
 	
 	return err
 }
@@ -196,9 +210,13 @@ func (c *Coordinator) executeDAG() error {
 			now := time.Now().UTC()
 			c.task.FinishedAt = &now
 			c.mu.Unlock()
+			c.log.Info("Task completed successfully")
+			c.events.Emit(common.Event{Type: types.EventTaskCompleted, TaskID: c.task.TaskID})
 		}
 		return nil
 	}
+
+	c.log.Debug("DAG resolved ready steps", "count", len(readySteps))
 
 	// Per-Agent Throttling (Phase 3.2)
 	// We track how many steps are currently running for each agent in this task.
@@ -258,8 +276,12 @@ func (c *Coordinator) executeDAG() error {
 			step.Status = types.StepStatusRunning
 			c.mu.Unlock()
 
+			c.log.Info("Dispatching step", "step_id", step.StepID, "capability", step.Capability)
+			c.events.Emit(common.Event{Type: types.EventStepStarted, TaskID: c.task.TaskID, StepID: step.StepID})
+
 			resp, err := c.transport.Dispatch(req, agentManifest)
 			if err != nil {
+				c.log.Error("Step dispatch failed", "step_id", step.StepID, "error", err)
 				c.failStep(step, "DISPATCH_FAILED", err.Error())
 				errChan <- err
 				return
@@ -274,7 +296,11 @@ func (c *Coordinator) executeDAG() error {
 				// Add to Delta Log safely
 				c.stateMgr.AppendResult(step.StepID, step.Output)
 				c.mu.Unlock()
+
+				c.log.Info("Step completed", "step_id", step.StepID)
+				c.events.Emit(common.Event{Type: types.EventStepCompleted, TaskID: c.task.TaskID, StepID: step.StepID})
 			} else {
+				c.log.Warn("Step execution failed by agent", "step_id", step.StepID)
 				c.failStep(step, "EXECUTION_FAILED", "Agent returned error")
 				errChan <- fmt.Errorf("agent returned failure")
 			}
