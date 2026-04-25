@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"gaia/kernel/pkg/common"
 	"gaia/kernel/pkg/logger"
+	"gaia/kernel/pkg/policy"
 	"gaia/kernel/pkg/registry"
 	"gaia/kernel/pkg/state"
 	"gaia/kernel/pkg/types"
@@ -39,10 +40,16 @@ type Coordinator struct {
 	transport AgentTransport
 	log      *slog.Logger
 	events   *common.EventBus
+	backoff   *BackoffCalculator
+	replans   int
+	taskStore *state.TaskStore
+	policy    *policy.PolicyEngine
+	validator *policy.SchemaValidator
 }
 
 // NewCoordinator initializes a new task coordinator with the required kernel subsystems.
-func NewCoordinator(t *types.Task, c *KernelConfig, r registry.CapabilityRegistry, p Planner, trans AgentTransport) *Coordinator {
+func NewCoordinator(t *types.Task, c *KernelConfig, r registry.CapabilityRegistry, p Planner, trans AgentTransport, ts *state.TaskStore) *Coordinator {
+	pe, _ := policy.NewPolicyEngine()
 	return &Coordinator{
 		task:      t,
 		config:    c,
@@ -52,6 +59,10 @@ func NewCoordinator(t *types.Task, c *KernelConfig, r registry.CapabilityRegistr
 		transport: trans,
 		log:       logger.Sub("task_id", t.TaskID),
 		events:    common.GetEventBus(),
+		backoff:   NewBackoffCalculator(),
+		taskStore: ts,
+		policy:    pe,
+		validator: &policy.SchemaValidator{},
 	}
 }
 
@@ -112,6 +123,11 @@ func (c *Coordinator) phase1Submission() error {
 	
 	c.log.Info("Task transitioned to planning")
 	c.events.Emit(common.Event{Type: types.EventTaskPlanning, TaskID: c.task.TaskID})
+	
+	// Checkpoint 1: Initial Submission
+	if err := c.taskStore.SaveTask(c.task); err != nil {
+		c.log.Error("Failed to checkpoint task in Phase 1", "error", err)
+	}
 	return nil
 }
 
@@ -157,6 +173,11 @@ func (c *Coordinator) phase2Planning() error {
 		c.task.Plan = plan.Steps
 		c.log.Info("Plan generated successfully", "step_count", len(plan.Steps))
 		c.events.Emit(common.Event{Type: types.EventPlanGenerated, TaskID: c.task.TaskID})
+
+		// Checkpoint 2: Plan Generation
+		if err := c.taskStore.SaveTask(c.task); err != nil {
+			c.log.Error("Failed to checkpoint plan in Phase 2", "error", err)
+		}
 		return nil
 	}
 
@@ -258,10 +279,50 @@ func (c *Coordinator) executeDAG() error {
 			}
 			step.Input = resolvedInput
 
-			// Phase 6: Agent Routing & Dispatch
-			// We skip Policy (Phase 5) for brevity, assuming the policy engine runs globally.
+			// Phase 5: Policy Engine (Firewall)
+			// We build a context for the CEL engine
 			agentManifest := &types.AgentManifest{AgentID: "mock.agent"} // Fetched from Registry in real impl
-			
+			policyContext := map[string]interface{}{
+				"task": map[string]interface{}{
+					"goal": c.task.Goal,
+				},
+				"step": map[string]interface{}{
+					"capability": step.Capability,
+				},
+				"agent": map[string]interface{}{
+					"agent_id": agentManifest.AgentID,
+				},
+				"env": "production",
+			}
+
+			// Example: Global kernel policy strings (would be in config in real impl)
+			globalPolicies := []string{
+				"env == 'production' ? true : true", // Placeholder
+			}
+
+			if err := c.policy.EvaluateAll(globalPolicies, policyContext); err != nil {
+				c.log.Warn("Policy denied execution", "step_id", step.StepID, "error", err)
+				c.handleStepFailure(step, &types.Error{Code: types.ErrorCodePolicyDenied, Message: err.Error()}, agentManifest)
+				return
+			}
+
+			// Phase 5.1: Schema Validation
+			// Find capability schema in manifest
+			var capSchema map[string]interface{}
+			for _, cap := range agentManifest.Capabilities {
+				if cap.Name == step.Capability {
+					capSchema = cap.InputSchema
+					break
+				}
+			}
+
+			if err := c.validator.ValidateStepInput(step.Input, capSchema); err != nil {
+				c.log.Warn("Schema violation detected", "step_id", step.StepID, "error", err)
+				c.handleStepFailure(step, &types.Error{Code: types.ErrorCodeSchemaViolation, Message: err.Error()}, agentManifest)
+				return
+			}
+
+			// Phase 6: Agent Routing & Dispatch
 			req := &types.Request{
 				Type:       "REQUEST",
 				RequestID:  "req-" + step.StepID,
@@ -282,8 +343,7 @@ func (c *Coordinator) executeDAG() error {
 			resp, err := c.transport.Dispatch(req, agentManifest)
 			if err != nil {
 				c.log.Error("Step dispatch failed", "step_id", step.StepID, "error", err)
-				c.failStep(step, "DISPATCH_FAILED", err.Error())
-				errChan <- err
+				c.handleStepFailure(step, &types.Error{Code: types.ErrorCodeAgentUnavailable, Message: err.Error()}, agentManifest)
 				return
 			}
 
@@ -299,10 +359,14 @@ func (c *Coordinator) executeDAG() error {
 
 				c.log.Info("Step completed", "step_id", step.StepID)
 				c.events.Emit(common.Event{Type: types.EventStepCompleted, TaskID: c.task.TaskID, StepID: step.StepID})
+
+				// Checkpoint 3: Step Completion
+				if err := c.taskStore.SaveTask(c.task); err != nil {
+					c.log.Error("Failed to checkpoint step completion", "step_id", step.StepID, "error", err)
+				}
 			} else {
 				c.log.Warn("Step execution failed by agent", "step_id", step.StepID)
-				c.failStep(step, "EXECUTION_FAILED", "Agent returned error")
-				errChan <- fmt.Errorf("agent returned failure")
+				c.handleStepFailure(step, resp.Error, agentManifest)
 			}
 		}(sPtr)
 	}
@@ -310,14 +374,56 @@ func (c *Coordinator) executeDAG() error {
 	wg.Wait()
 	close(errChan)
 
-	// If any step failed unrecoverably, we would trigger Escalation (Phase 8) here.
-	// For now, we return the first error encountered, if any.
-	for err := range errChan {
-		if err != nil {
-			return err
-		}
-	}
+	// In Phase 4, we no longer return the first error from executeDAG immediately.
+	// Instead, we let the loop iterate. If a step failed and triggered a replan,
+	// the task status will change in the next iteration.
 	return nil
+}
+
+// handleStepFailure implements the 4-tier escalation path (Retry -> Fallback -> Replan -> Abort).
+func (c *Coordinator) handleStepFailure(step *types.Step, err *types.Error, agent *types.AgentManifest) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.log.Warn("Handling step failure", "step_id", step.StepID, "error_code", err.Code, "retry_count", step.RetryCount)
+
+	// Tier 1: Retry (if retryable and attempts < max)
+	// For this foundation phase, we use a default policy if none exists
+	policy := &types.RetryPolicy{
+		MaxAttempts: 3,
+		Backoff:     "exponential",
+		BaseDelayMS: 500,
+		MaxDelayMS:  10000,
+	}
+
+	if IsRetryable(step, err, agent) && step.RetryCount < policy.MaxAttempts {
+		step.RetryCount++
+		delay := c.backoff.GetDelay(policy, step.RetryCount)
+		
+		c.log.Info("Escalation Tier 1: Retrying step", "step_id", step.StepID, "delay_ms", delay.Milliseconds())
+		
+		// Reset to pending so GetReadySteps picks it up again in next iteration
+		// In a real impl, we'd use a timer to delay the transition
+		step.Status = types.StepStatusPending
+		return
+	}
+
+	// Tier 2: Fallback (Skipped for brevity in Task 1, usually involves Registry lookup for same capability)
+
+	// Tier 3: Replan
+	if c.replans < c.config.MaxReplans {
+		c.replans++
+		c.task.Status = types.TaskStatusPlanning
+		c.log.Info("Escalation Tier 3: Triggering Re-plan", "replan_count", c.replans)
+		c.events.Emit(common.Event{Type: types.EventReplanTriggered, TaskID: c.task.TaskID})
+		return
+	}
+
+	// Tier 4: Abort
+	step.Status = types.StepStatusFailed
+	step.Error = err
+	c.task.Status = types.TaskStatusFailed
+	c.log.Error("Escalation Tier 4: Aborting task", "step_id", step.StepID)
 }
 
 // failStep is a helper to mark a step as failed.

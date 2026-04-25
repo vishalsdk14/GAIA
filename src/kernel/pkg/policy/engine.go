@@ -12,74 +12,71 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package policy implements the security firewall for the GAIA kernel.
-// It leverages Google's Common Expression Language (CEL) to evaluate
-// dynamic, non-Turing complete security rules in microseconds.
 package policy
 
 import (
 	"fmt"
+	"gaia/kernel/pkg/types"
 
 	"github.com/google/cel-go/cel"
 )
 
-// Engine encapsulates the CEL execution environment.
-// It allows the kernel to compile and evaluate dynamic string-based policies
-// against the runtime context of Tasks and Steps.
-type Engine struct {
+// PolicyEngine implements Phase 5 (Policy Evaluation) using Google's CEL.
+type PolicyEngine struct {
 	env *cel.Env
 }
 
-// NewEngine initializes the CEL environment and declares the canonical
-// variables that policy rules are allowed to reference.
-// We use cel.DynType to allow flexible JSON-like traversal of our schemas.
-func NewEngine() (*Engine, error) {
-	env, err := cel.NewEnv(
-		cel.Variable("task", cel.DynType),
-		cel.Variable("step", cel.DynType),
-		cel.Variable("agent", cel.DynType),
-		cel.Variable("capability", cel.DynType),
+// NewPolicyEngine initializes a CEL environment with the standard GAIA variable declarations.
+func NewPolicyEngine() (*PolicyEngine, error) {
+	e, err := cel.NewEnv(
+		cel.Variable("task", cel.MapType(cel.StringType, cel.AnyType)),
+		cel.Variable("step", cel.MapType(cel.StringType, cel.AnyType)),
+		cel.Variable("agent", cel.MapType(cel.StringType, cel.AnyType)),
+		cel.Variable("capability", cel.MapType(cel.StringType, cel.AnyType)),
 		cel.Variable("env", cel.StringType),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("policy: failed to init CEL env: %w", err)
+		return nil, fmt.Errorf("policy: failed to initialize CEL env: %w", err)
 	}
-
-	return &Engine{env: env}, nil
+	return &PolicyEngine{env: e}, nil
 }
 
-// Evaluate compiles and executes a CEL rule string against a provided data context.
-// The context must provide the variables declared in NewEngine.
-// It returns a boolean indicating whether the policy passed, or an error if the
-// rule is malformed or evaluation fails.
-//
-// Note: In Phase 4 (Production), the Abstract Syntax Trees (ASTs) generated
-// by Compile() should be cached in an LRU cache to prevent recompilation
-// overhead on hot-path evaluations.
-func (e *Engine) Evaluate(rule string, context map[string]interface{}) (bool, error) {
-	// 1. Compile the string rule into an AST
-	ast, issues := e.env.Compile(rule)
+// Evaluate runs a CEL expression against the provided context.
+// Returns true if the policy is satisfied, false if denied.
+func (pe *PolicyEngine) Evaluate(policy string, context map[string]interface{}) (bool, error) {
+	ast, issues := pe.env.Compile(policy)
 	if issues != nil && issues.Err() != nil {
-		return false, fmt.Errorf("policy: failed to compile rule: %w", issues.Err())
+		return false, fmt.Errorf("policy: compilation error: %w", issues.Err())
 	}
 
-	// 2. Generate the executable program
-	prg, err := e.env.Program(ast)
+	program, err := pe.env.Program(ast)
 	if err != nil {
-		return false, fmt.Errorf("policy: failed to build program: %w", err)
+		return false, fmt.Errorf("policy: program initialization error: %w", err)
 	}
 
-	// 3. Evaluate the program against the contextual state
-	out, _, err := prg.Eval(context)
+	out, _, err := program.Eval(context)
 	if err != nil {
-		return false, fmt.Errorf("policy: failed to evaluate rule: %w", err)
+		return false, fmt.Errorf("policy: evaluation error: %w", err)
 	}
 
-	// 4. Ensure the output is strictly a boolean
 	result, ok := out.Value().(bool)
 	if !ok {
-		return false, fmt.Errorf("policy: rule evaluation did not return a boolean type")
+		return false, fmt.Errorf("policy: expression must return a boolean")
 	}
 
 	return result, nil
+}
+
+// EvaluateAll runs a list of policies and returns the first failure, if any.
+func (pe *PolicyEngine) EvaluateAll(policies []string, context map[string]interface{}) error {
+	for _, p := range policies {
+		success, err := pe.Evaluate(p, context)
+		if err != nil {
+			return err
+		}
+		if !success {
+			return fmt.Errorf("policy: %w: denied by rule: %s", fmt.Errorf(string(types.ErrorCodePolicyDenied)), p)
+		}
+	}
+	return nil
 }

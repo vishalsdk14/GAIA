@@ -27,15 +27,14 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// SQLiteAgentStore is the Phase 3 implementation for Tier 4 (Managed Agent State).
-// It strictly enforces multi-tenancy at the query level by partitioning all
-// operations with the agent_id.
-type SQLiteAgentStore struct {
-	db *sql.DB
+// SQLiteStore is the Phase 3+ implementation for persistent kernel state.
+// It handles Tier 4 (Managed Agent State) and Tier 2 (Task History).
+type SQLiteStore struct {
+	DB *sql.DB
 }
 
-// NewSQLiteAgentStore initializes the database connection and ensures the schema exists.
-func NewSQLiteAgentStore(dbPath string) (*SQLiteAgentStore, error) {
+// NewSQLiteStore initializes the database connection and ensures core schemas exist.
+func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 	// Ensure directory exists so SQLite doesn't panic on file creation
 	dir := filepath.Dir(dbPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -47,7 +46,7 @@ func NewSQLiteAgentStore(dbPath string) (*SQLiteAgentStore, error) {
 		return nil, fmt.Errorf("state: failed to open sqlite db: %w", err)
 	}
 
-	// 1. Create the strongly isolated multi-tenant table
+	// 1. Create the strongly isolated multi-tenant table for Agent State
 	query := `
 	CREATE TABLE IF NOT EXISTS agent_state (
 		agent_id TEXT NOT NULL,
@@ -61,14 +60,11 @@ func NewSQLiteAgentStore(dbPath string) (*SQLiteAgentStore, error) {
 		return nil, fmt.Errorf("state: failed to create agent_state table: %w", err)
 	}
 
-	return &SQLiteAgentStore{db: db}, nil
+	return &SQLiteStore{DB: db}, nil
 }
 
 // Put saves a key-value document into the SQLite store.
-// It enforces strict multi-tenancy and validates storage quotas (max_bytes)
-// before allowing the UPSERT to proceed.
-func (s *SQLiteAgentStore) Put(agentID string, key string, data interface{}, manifest *types.AgentManifest) error {
-	// 1. Verify the agent explicitly requested state storage during Handshake
+func (s *SQLiteStore) Put(agentID string, key string, data interface{}, manifest *types.AgentManifest) error {
 	if manifest.StateRequirements == nil || !manifest.StateRequirements.Required {
 		return fmt.Errorf("state: %w: agent did not request state_requirements", fmt.Errorf(string(types.ErrorCodePolicyDenied)))
 	}
@@ -78,24 +74,18 @@ func (s *SQLiteAgentStore) Put(agentID string, key string, data interface{}, man
 		return fmt.Errorf("state: failed to marshal data: %w", err)
 	}
 
-	// 2. Quota Enforcement
-	// If the agent requested a quota, we must ensure they haven't exceeded it.
 	if manifest.StateRequirements.MaxBytes > 0 {
 		var currentSize int
-		err := s.db.QueryRow(`SELECT COALESCE(SUM(LENGTH(state_data)), 0) FROM agent_state WHERE agent_id = ?`, agentID).Scan(&currentSize)
+		err := s.DB.QueryRow(`SELECT COALESCE(SUM(LENGTH(state_data)), 0) FROM agent_state WHERE agent_id = ?`, agentID).Scan(&currentSize)
 		if err != nil {
 			return fmt.Errorf("state: failed to check quota: %w", err)
 		}
 		
-		// Note: This is an approximation. If the key already exists, the UPSERT will overwrite it,
-		// meaning the total size won't increase by len(bytes), but doing a strict additive check
-		// prevents catastrophic allocation attempts.
 		if currentSize+len(bytes) > manifest.StateRequirements.MaxBytes {
 			return fmt.Errorf("state: %w: quota exceeded", fmt.Errorf(string(types.ErrorCodePolicyDenied)))
 		}
 	}
 
-	// 3. Perform the UPSERT
 	query := `
 	INSERT INTO agent_state (agent_id, state_key, state_data, updated_at) 
 	VALUES (?, ?, ?, CURRENT_TIMESTAMP)
@@ -103,18 +93,17 @@ func (s *SQLiteAgentStore) Put(agentID string, key string, data interface{}, man
 		state_data=excluded.state_data, 
 		updated_at=CURRENT_TIMESTAMP;`
 	
-	_, err = s.db.Exec(query, agentID, key, string(bytes))
+	_, err = s.DB.Exec(query, agentID, key, string(bytes))
 	return err
 }
 
 // Get retrieves a JSON document strictly from the agent's partitioned namespace.
-// It returns nil, nil if the document does not exist, as per the interface contract.
-func (s *SQLiteAgentStore) Get(agentID string, key string) (interface{}, error) {
+func (s *SQLiteStore) Get(agentID string, key string) (interface{}, error) {
 	var dataStr string
-	err := s.db.QueryRow(`SELECT state_data FROM agent_state WHERE agent_id = ? AND state_key = ?`, agentID, key).Scan(&dataStr)
+	err := s.DB.QueryRow(`SELECT state_data FROM agent_state WHERE agent_id = ? AND state_key = ?`, agentID, key).Scan(&dataStr)
 	
 	if err == sql.ErrNoRows {
-		return nil, nil // Return nil if key doesn't exist
+		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("state: failed to retrieve data: %w", err)
@@ -128,8 +117,8 @@ func (s *SQLiteAgentStore) Get(agentID string, key string) (interface{}, error) 
 }
 
 // Delete removes a specific key from an agent's namespace.
-func (s *SQLiteAgentStore) Delete(agentID string, key string) error {
-	_, err := s.db.Exec(`DELETE FROM agent_state WHERE agent_id = ? AND state_key = ?`, agentID, key)
+func (s *SQLiteStore) Delete(agentID string, key string) error {
+	_, err := s.DB.Exec(`DELETE FROM agent_state WHERE agent_id = ? AND state_key = ?`, agentID, key)
 	if err != nil {
 		return fmt.Errorf("state: failed to delete key: %w", err)
 	}
@@ -137,8 +126,8 @@ func (s *SQLiteAgentStore) Delete(agentID string, key string) error {
 }
 
 // DeleteNamespace acts as the "Kill Switch" to instantly purge all data for an agent.
-func (s *SQLiteAgentStore) DeleteNamespace(agentID string) error {
-	_, err := s.db.Exec(`DELETE FROM agent_state WHERE agent_id = ?`, agentID)
+func (s *SQLiteStore) DeleteNamespace(agentID string) error {
+	_, err := s.DB.Exec(`DELETE FROM agent_state WHERE agent_id = ?`, agentID)
 	if err != nil {
 		return fmt.Errorf("state: failed to drop namespace: %w", err)
 	}
