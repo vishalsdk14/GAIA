@@ -18,13 +18,13 @@ Thank you for your interest in contributing to GAIA. This document provides guid
 
 ## Current Phase
 
-GAIA is in the **Design & Specification** phase. This means:
+GAIA is in the **Implementation** phase. This means:
 
-* ✅ We are actively accepting **design reviews, schema proposals, and specification feedback**.
-* ✅ We welcome **documentation improvements** and **protocol adapter proposals**.
-* 🔲 We are **not yet accepting code contributions** (the implementation has not started).
+* ✅ We are actively accepting **code contributions** for the Go Kernel and SDKs.
+* ✅ We continue to accept **design reviews and specification feedback**.
+* ✅ We welcome **protocol adapter** and **agent SDK** implementations.
 
-When the project transitions to the Implementation phase, this guide will be updated with code-specific standards.
+All contributions must strictly adhere to the finalized [Technical Specifications](docs/specs/).
 
 ---
 
@@ -140,16 +140,33 @@ All specification documents in `docs/` must follow these rules:
 
 ---
 
-## Code Standards (Future)
+## Code Standards
 
-> These standards will be finalized when the project enters the Implementation phase.
+GAIA uses a **Polyglot Architecture**. The Core Kernel is implemented in Go, while Agent SDKs are provided in TypeScript and Python.
 
-Preliminary decisions:
+### 1. Core Kernel (Go)
+* **Language**: Go 1.22+
+* **Concurrency**: Use `goroutines` and `channels` for the control loop. Avoid shared state/mutexes unless performance-critical.
+* **Error Handling**: Use the standard `if err != nil` pattern. Wrap errors with context using `fmt.Errorf("context: %w", err)`. Use GAIA error codes from `docs/reference/error-codes.md`.
+* **Performance**: 
+    - Use `sync.Pool` for high-frequency state objects (Delta Log entries).
+    - Use `tidwall/gjson` for zero-allocation JSON traversal during interpolation.
+* **Formatting**: All code must be formatted with `gofmt` and linted with `golangci-lint`.
 
-* **Language**: TypeScript (Node.js runtime).
-* **Style**: Strict typing. No `any`. All interfaces defined in `src/types/`.
-* **Testing**: Unit tests for all kernel components. Integration tests for protocol adapters.
-* **Linting**: ESLint with strict configuration.
+### 2. Agent SDKs (TypeScript / Python)
+* **TypeScript**: 
+    - No `any`. 
+    - All types must be generated from the `docs/specs/schemas.md`.
+    - Use `Async/Await` exclusively for I/O.
+* **Python**:
+    - Use Type Hints for all function signatures.
+    - Follow PEP 8 style guidelines.
+    - Use `asyncio` for non-blocking agent communication.
+
+### 3. Testing Requirements
+* **Unit Tests**: Mandatory for all kernel phases (Phase 1-10) and interpolation logic.
+* **Integration Tests**: Required for all transport adapters (HTTP, gRPC, WebSocket).
+* **Fuzzing**: Used for the CEL Policy Engine and JSON schema validation logic.
 
 ---
 
