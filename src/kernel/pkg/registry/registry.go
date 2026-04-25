@@ -31,6 +31,8 @@ type CapabilityRegistry interface {
 	Deregister(agentID string) error
 	UpdateHealth(agentID string, success bool, latencyMS int) error
 	SelectAgent(capability string) (*types.AgentRecord, error)
+	ListAgents() []*types.AgentRecord
+	ListCapabilities() []string
 }
 
 // InMemoryRegistry is the Foundation Phase implementation of the CapabilityRegistry.
@@ -48,4 +50,28 @@ func NewInMemoryRegistry() *InMemoryRegistry {
 		agents:       make(map[string]*types.AgentRecord),
 		capabilities: make(map[string][]string),
 	}
+}
+
+// ListAgents returns all registered agents.
+func (r *InMemoryRegistry) ListAgents() []*types.AgentRecord {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	
+	list := make([]*types.AgentRecord, 0, len(r.agents))
+	for _, a := range r.agents {
+		list = append(list, a)
+	}
+	return list
+}
+
+// ListCapabilities returns all registered capabilities.
+func (r *InMemoryRegistry) ListCapabilities() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	list := make([]string, 0, len(r.capabilities))
+	for c := range r.capabilities {
+		list = append(list, c)
+	}
+	return list
 }

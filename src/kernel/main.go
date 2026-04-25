@@ -15,9 +15,12 @@
 package main
 
 import (
-	"fmt"
+	"gaia/kernel/pkg/api"
 	"gaia/kernel/pkg/core"
 	"gaia/kernel/pkg/logger"
+	"gaia/kernel/pkg/registry"
+	"gaia/kernel/pkg/state"
+	"log"
 )
 
 func main() {
@@ -29,7 +32,7 @@ func main() {
 
 	// Initialize tamper-proof Audit Logger
 	if _, err := logger.InitAuditLogger(config.AuditLogPath); err != nil {
-		fmt.Printf("Warning: Failed to initialize audit log: %v\n", err)
+		log.Printf("Warning: Failed to initialize audit log: %v\n", err)
 	}
 
 	logger.L.Info("GAIA Orchestration Kernel initializing...", 
@@ -38,8 +41,32 @@ func main() {
 		"db_path", config.DBPath,
 	)
 
-	fmt.Println("GAIA Kernel Core is ready.")
+	// 1. Initialize State Storage (Tier 2 & 4)
+	store, err := state.NewSQLiteStore(config.DBPath)
+	if err != nil {
+		log.Fatalf("Critical: Failed to initialize SQLite store: %v", err)
+	}
+	taskStore, _ := state.NewTaskStore(store.DB)
+
+	// 2. Initialize Registry
+	reg := registry.NewInMemoryRegistry()
+
+	// 3. Initialize Planner & Transport
+	planner, err := core.NewPlanner(config)
+	if err != nil {
+		log.Fatalf("Critical: Failed to initialize planner: %v", err)
+	}
+	transport := core.NewProtocolDispatcher() 
+
+	// 4. Initialize Orchestrator (Goal Manager)
+	orch := core.NewOrchestrator(config, reg, taskStore, planner, transport)
+
+	// 5. Initialize & Start API Gateway
+	server := api.NewServer(orch, reg)
 	
-	// TODO: Initialize Registry, HTTP Server, and Control Loop Hub
-	logger.L.Info("Kernel ready for task submission.")
+	port := ":8080"
+	logger.L.Info("Kernel Gateway starting", "addr", port)
+	if err := server.Start(port); err != nil {
+		log.Fatalf("Critical: API Server failed: %v", err)
+	}
 }
