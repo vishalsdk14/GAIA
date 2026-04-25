@@ -9,6 +9,8 @@ Inspired by the systematic approach of "Linux Device Drivers," this guide breaks
 ## Table of Contents
 
 ### Part I: The Foundation
+*   **[Chapter 0: The Journey of a Goal](00-journey.md)**
+    *   A narrative overview of the end-to-end task execution flow.
 *   **[Chapter 1: The GAIA Paradigm](01-paradigm.md)**
     *   Deterministic Orchestration, Capability-First Routing, and Mediated Communication.
 *   **[Chapter 2: Kernel Architecture](02-architecture.md)**
