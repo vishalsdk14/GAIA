@@ -17,7 +17,6 @@ package core
 import (
 	"fmt"
 	"gaia/kernel/pkg/types"
-	"time"
 )
 
 // AgentTransport defines the network layer abstraction for dispatching requests to agents.
@@ -27,27 +26,41 @@ type AgentTransport interface {
 	Dispatch(req *types.Request, agent *types.AgentManifest) (*types.Response, error)
 }
 
-// MockTransport provides a Foundation phase scaffold until real network protocols
-// (like MCP/A2A) are implemented in Task 4.
+// ProtocolDispatcher is a switchboard that routes requests to the correct adapter.
+type ProtocolDispatcher struct {
+	native *NativeTransport
+	mcp    *MCPTransport
+	a2a    *A2ATransport
+}
+
+func NewProtocolDispatcher() *ProtocolDispatcher {
+	return &ProtocolDispatcher{
+		native: &NativeTransport{},
+		mcp:    &MCPTransport{},
+		a2a:    &A2ATransport{},
+	}
+}
+
+func (d *ProtocolDispatcher) Dispatch(req *types.Request, agent *types.AgentManifest) (*types.Response, error) {
+	switch agent.Protocol {
+	case types.ProtocolNative:
+		return d.native.Dispatch(req, agent)
+	case types.ProtocolMCP:
+		return d.mcp.Dispatch(req, agent)
+	case types.ProtocolA2A:
+		return d.a2a.Dispatch(req, agent)
+	default:
+		return nil, fmt.Errorf("transport: unsupported protocol: %s", agent.Protocol)
+	}
+}
+
+// MockTransport provides a Foundation phase scaffold for testing.
 type MockTransport struct{}
 
-// Dispatch simulates network latency and returns a mock success response.
 func (m *MockTransport) Dispatch(req *types.Request, agent *types.AgentManifest) (*types.Response, error) {
-	fmt.Printf("Transport: Dispatching Step=%s to Agent=%s (Capability=%s)\n", req.StepID, agent.AgentID, req.Capability)
-
-	// Simulate network latency
-	time.Sleep(500 * time.Millisecond)
-
-	// Return a dummy successful response
 	return &types.Response{
 		RequestID: req.RequestID,
 		Success:   true,
-		Output: map[string]interface{}{
-			"status": "mock_success",
-			"note":   "Task 4 will implement real MCP/A2A network calls.",
-		},
-		Metrics: &types.RequestMetrics{
-			DurationMS: 500,
-		},
+		Output: map[string]interface{}{"status": "mock_success"},
 	}, nil
 }
