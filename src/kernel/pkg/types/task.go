@@ -23,11 +23,11 @@ type TaskStatus string
 
 const (
 	TaskStatusPending   TaskStatus = "pending"
-	TaskStatusRunning   TaskStatus = "running"
-	TaskStatusWaiting   TaskStatus = "waiting"
+	TaskStatusPlanning  TaskStatus = "planning"
+	TaskStatusExecuting TaskStatus = "executing"
 	TaskStatusCompleted TaskStatus = "completed"
 	TaskStatusFailed    TaskStatus = "failed"
-	TaskStatusAborted   TaskStatus = "aborted"
+	TaskStatusCancelled TaskStatus = "cancelled"
 )
 
 // Task represents a high-level goal being managed by the GAIA kernel.
@@ -36,7 +36,7 @@ type Task struct {
 	Goal        string                 `json:"goal"`
 	Status      TaskStatus             `json:"status"`
 	Plan        []Step                 `json:"plan,omitempty"`
-	StepIndex   int                    `json:"step_index"`
+	CurrentStep int                    `json:"current_step"`
 	Metadata    map[string]interface{} `json:"metadata,omitempty"`
 	CreatedAt   time.Time              `json:"created_at"`
 	UpdatedAt   time.Time              `json:"updated_at"`

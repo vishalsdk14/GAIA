@@ -128,7 +128,7 @@ func (c *Coordinator) phase2Planning() error {
 	// 3. Post-Planning Transition
 	c.task.Status = types.TaskStatusExecuting
 	c.task.UpdatedAt = time.Now().UTC()
-	c.task.Plan = plan
+	c.task.Plan = plan.Steps
 	
 	// TODO: Emit PLAN_GENERATED & TASK_EXECUTING events
 	return nil

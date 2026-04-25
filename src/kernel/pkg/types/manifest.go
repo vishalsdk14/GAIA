@@ -83,6 +83,7 @@ type Capability struct {
 	Description  string                 `json:"description"`
 	InputSchema  map[string]interface{} `json:"input_schema"`
 	OutputSchema map[string]interface{} `json:"output_schema"`
+	Idempotent   bool                   `json:"idempotent"`
 	Constraints  *Constraints           `json:"constraints,omitempty"`
 }
 
