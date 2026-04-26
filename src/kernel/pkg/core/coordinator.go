@@ -31,25 +31,26 @@ import (
 // It executes the 10-phase control loop in a dedicated goroutine, ensuring that
 // state transitions are atomic and that invariants from docs/specs/control-loop.md are held.
 type Coordinator struct {
-	mu       sync.Mutex
-	config   *KernelConfig
-	task     *types.Task
-	stateMgr *state.ActiveStateManager
-	registry registry.CapabilityRegistry
-	planner  Planner
+	mu        sync.Mutex
+	config    *KernelConfig
+	task      *types.Task
+	stateMgr  *state.ActiveStateManager
+	registry  registry.CapabilityRegistry
+	planner   Planner
 	transport AgentTransport
-	log      *slog.Logger
-	events   *common.EventBus
+	log       *slog.Logger
+	events    *common.EventBus
 	backoff   *BackoffCalculator
 	replans   int
 	taskStore *state.TaskStore
 	policy    *policy.PolicyEngine
 	validator *policy.SchemaValidator
 	audit     *logger.AuditLogger
+	quota     *QuotaManager
 }
 
 // NewCoordinator initializes a new task coordinator with the required kernel subsystems.
-func NewCoordinator(t *types.Task, c *KernelConfig, r registry.CapabilityRegistry, p Planner, trans AgentTransport, ts *state.TaskStore) *Coordinator {
+func NewCoordinator(t *types.Task, c *KernelConfig, r registry.CapabilityRegistry, p Planner, trans AgentTransport, ts *state.TaskStore, quota *QuotaManager) *Coordinator {
 	pe, _ := policy.NewPolicyEngine()
 	return &Coordinator{
 		task:      t,
@@ -65,12 +66,14 @@ func NewCoordinator(t *types.Task, c *KernelConfig, r registry.CapabilityRegistr
 		policy:    pe,
 		validator: &policy.SchemaValidator{},
 		audit:     logger.GetAuditLogger(),
+		quota:     quota,
 	}
 }
 
 // Run executes the 10-phase control loop for the task.
 // This function implements the logic defined in docs/specs/control-loop.md Section 30.
 func (c *Coordinator) Run() error {
+	defer c.quota.ReleaseTask(c.task.TaskID)
 	for {
 		// Kernel Invariant 1: Progress Guarantee.
 		// Check for termination states before each iteration.
@@ -220,6 +223,13 @@ func (c *Coordinator) failTask(err error) error {
 func (c *Coordinator) executeDAG() error {
 	// Phase 3: DAG Resolution
 	readySteps := GetReadySteps(c.task.Plan)
+
+	// Phase 11: Quota Enforcement
+	if len(readySteps) > 0 {
+		if err := c.quota.IncrementStep(c.task.TaskID); err != nil {
+			return c.failTask(err)
+		}
+	}
 
 	// Phase 10: Governance - Check Usage Policies
 	if err := c.checkUsagePolicies(); err != nil {

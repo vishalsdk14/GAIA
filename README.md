@@ -134,6 +134,8 @@ GAIA natively consumes **Google A2A** (agent-to-agent) and **Anthropic MCP** (ag
 | [Kernel Internals Guide](docs/site/docs/internals/index.md) | ✅ Complete | A 10-chapter deep dive into the GAIA architecture and modules |
 | Component Specifications | ✅ Complete | 12 detailed documents covering schemas, control loops, and security |
 | Core Implementation | ✅ Complete | Go Kernel with 10-phase control loop, SQLite persistence, and CEL Policy Engine |
+| Governance & Audit | ✅ Complete | Cryptographic HMAC chaining, state restoration, and usage policies |
+| Performance Engine | ✅ Complete | Zero-allocation interpolation, UDS/gRPC hybrid routing, and resource quotas |
 | Ecosystem & SDKs | ✅ Complete | Type-safe TS/Python SDKs, Unified CLI, and Docusaurus site |
 
 ---
@@ -225,17 +227,17 @@ For detailed setup instructions, visit the [Documentation Site](docs/site/docs/i
 - [x] Agent health & trust score monitoring dashboard
 - [x] Manual override & plan modification interface
 
-### Phase 10: Enterprise Governance & Auditing
-- [ ] Cryptographic Audit Log chaining (SHA-256)
-- [ ] Admin API for log querying & agent restoration
-- [ ] Advanced CEL-based policy management (Cost control, regional routing)
-- [ ] Tamper-proof event persistence
+### Phase 10: Enterprise Governance & Auditing (Complete)
+- [x] Cryptographic Audit Log chaining (HMAC-SHA256)
+- [x] Admin API for state restoration & trace verification
+- [x] Advanced CEL-based policy management (Cost & Usage)
+- [x] Tamper-proof deletion tombstones for reliable rollback
 
-### Phase 11: High-Performance & Hybrid Routing
-- [ ] Zero-allocation JSON interpolation engine
-- [ ] Hybrid routing (Local IPC path vs. Remote gRPC/HTTP path)
-- [ ] Multi-tenant resource quotas & memory pressure handling
-- [ ] Kernel-level performance profiling & optimizations
+### Phase 11: High-Performance & Hybrid Routing (Complete)
+- [x] Zero-allocation JSON interpolation engine (Nested dot-notation support)
+- [x] Hybrid routing (Local IPC/UDS path vs. Remote gRPC/HTTP path)
+- [x] Multi-tenant resource quotas & memory pressure handling
+- [x] Kernel-level performance profiling & optimizations
 
 ---
 

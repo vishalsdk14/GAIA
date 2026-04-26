@@ -34,6 +34,7 @@ type Orchestrator struct {
 	activeTasks  map[string]*Coordinator
 	planner      Planner
 	transport    AgentTransport
+	quota        *QuotaManager
 }
 
 // NewOrchestrator initializes the kernel's central task management hub.
@@ -45,6 +46,7 @@ func NewOrchestrator(c *KernelConfig, r registry.CapabilityRegistry, ts *state.T
 		activeTasks: make(map[string]*Coordinator),
 		planner:     p,
 		transport:   trans,
+		quota:       NewQuotaManager(100, 50),
 	}
 }
 
@@ -57,6 +59,11 @@ func (o *Orchestrator) Config() *KernelConfig {
 
 // SubmitTask initializes a new task, persists it, and starts the coordination loop.
 func (o *Orchestrator) SubmitTask(goal string) (*types.Task, error) {
+	// Phase 11: Check Task Quota
+	if err := o.quota.AcquireTask(); err != nil {
+		return nil, err
+	}
+
 	o.mu.Lock()
 	defer o.mu.Unlock()
 
@@ -79,7 +86,7 @@ func (o *Orchestrator) SubmitTask(goal string) (*types.Task, error) {
 	}
 
 	// 2. Initialize Coordinator
-	coord := NewCoordinator(task, o.config, o.registry, o.planner, o.transport, o.taskStore)
+	coord := NewCoordinator(task, o.config, o.registry, o.planner, o.transport, o.taskStore, o.quota)
 	o.activeTasks[taskID] = coord
 
 	// 3. Start Control Loop in background
