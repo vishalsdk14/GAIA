@@ -57,3 +57,4 @@ Thumbs.db
 .project
 .settings/
 .classpath
+src/kernel/data/
