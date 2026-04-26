@@ -25,6 +25,7 @@ It provides the stable ground, safety boundaries, and execution reliability that
 *   **Build Resilient Swarms**: Automatically recover from agent timeouts or failures with a 4-tier escalation path (Retry → Fallback → Replan → Abort).
 *   **Run Untrusted Agents Safely**: Execute agents in isolated sandboxes with a "Deny-by-Default" policy firewall. No shared state chaos.
 *   **Connect Anything**: Seamlessly orchestrate OpenAI, Anthropic, and Google agents in a single unified pipeline via A2A and MCP protocols.
+*   **Centralized Intelligence Proxy**: Provide managed LLM access (Local/Cloud) to all agents through the Kernel, enabling unified telemetry, cost tracking, and secret isolation.
 *   **Debug with Precision**: Every action is cryptographically signed and tracked in a tamper-proof audit log.
 
 ---

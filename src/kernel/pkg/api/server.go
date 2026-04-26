@@ -85,6 +85,12 @@ func (s *Server) setupRoutes() {
 		// Real-time Streaming
 		r.Get("/stream", s.handleStream)
 
+		// Intelligence Proxy
+		r.Route("/intelligence", func(r chi.Router) {
+			r.Post("/complete", s.handleIntelligenceComplete)
+			r.Post("/vision", s.handleIntelligenceVision)
+		})
+
 		// Admin & Governance (Phase 10)
 		r.Group(func(r chi.Router) {
 			r.Use(s.adminOnly)

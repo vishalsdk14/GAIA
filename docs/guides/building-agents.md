@@ -41,6 +41,11 @@ This guide will walk a developer through **building an agent that plugs into the
 * CANCEL message handling (best-effort)
 * Graceful cleanup
 
+### 7. Use Intelligence Services
+* Using the Kernel's centralized LLM proxy
+* `POST /api/v1/intelligence/complete` for text reasoning
+* `POST /api/v1/intelligence/vision` for visual analysis (e.g., finding UI elements)
+
 ### 7. Testing Your Agent
 * Manifest validation tool
 * Mock kernel for local testing

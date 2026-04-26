@@ -142,3 +142,13 @@ func (o *Orchestrator) UpdatePlan(taskID string, newPlan []types.Step) error {
 
 	return coord.UpdatePlan(newPlan)
 }
+
+// Complete proxies a text completion request to the planner.
+func (o *Orchestrator) Complete(prompt string) (string, error) {
+	return o.planner.Complete(prompt)
+}
+
+// Vision proxies a vision analysis request to the planner.
+func (o *Orchestrator) Vision(prompt string, imageBase64 string) (string, error) {
+	return o.planner.Vision(prompt, imageBase64)
+}
