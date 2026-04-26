@@ -123,6 +123,10 @@ func (c *Coordinator) phase1Submission() error {
 		return fmt.Errorf("core: task goal cannot be empty")
 	}
 
+	if c.task.Metadata == nil {
+		c.task.Metadata = make(map[string]interface{})
+	}
+
 	c.task.Status = types.TaskStatusPlanning
 	c.task.UpdatedAt = time.Now().UTC()
 	
@@ -149,6 +153,7 @@ func (c *Coordinator) phase2Planning() error {
 	}
 
 	activeState := c.stateMgr.GetSnapshot()
+	capabilities := c.registry.GetAllCapabilities()
 	
 	// Phase 2.3: Failure Recovery Loop
 	var lastErr error
@@ -161,7 +166,7 @@ func (c *Coordinator) phase2Planning() error {
 			goal = correctionPrompt
 		}
 
-		plan, err := c.planner.GeneratePlan(goal, activeState, nil)
+		plan, err := c.planner.GeneratePlan(goal, activeState, capabilities)
 		if err != nil {
 			// Check if the error is a schema violation (malformed JSON)
 			lastErr = err
@@ -268,10 +273,8 @@ func (c *Coordinator) executeDAG() error {
 	// We track how many steps are currently running for each agent in this task.
 	agentCounts := make(map[string]int)
 	for _, s := range c.task.Plan {
-		if s.Status == types.StepStatusRunning || s.Status == types.StepStatusPendingAsync {
-			// In a real impl, we'd know which agent was assigned.
-			// Here we assume "mock.agent" for simplicity.
-			agentCounts["mock.agent"]++
+		if (s.Status == types.StepStatusRunning || s.Status == types.StepStatusPendingAsync) && s.AssignedAgent != "" {
+			agentCounts[s.AssignedAgent]++
 		}
 	}
 
@@ -279,10 +282,17 @@ func (c *Coordinator) executeDAG() error {
 	errChan := make(chan error, len(readySteps))
 
 	for _, sPtr := range readySteps {
+		// Phase 6.0: Early Agent Selection for Throttling
+		agentRecord, err := c.registry.SelectAgent(sPtr.Capability)
+		if err != nil {
+			c.log.Warn("No agent available for ready step", "step_id", sPtr.StepID, "capability", sPtr.Capability)
+			continue
+		}
+		targetAgent := agentRecord.Manifest.AgentID
+
 		// Check throttle
-		targetAgent := "mock.agent" 
 		if agentCounts[targetAgent] >= c.config.MaxConcurrentPerAgent {
-			fmt.Printf("Coordinator [task=%s]: Throttling step %s for agent %s\n", c.task.TaskID, sPtr.StepID, targetAgent)
+			c.log.Debug("Throttling step for agent", "step_id", sPtr.StepID, "agent_id", targetAgent)
 			continue
 		}
 		agentCounts[targetAgent]++
@@ -312,7 +322,7 @@ func (c *Coordinator) executeDAG() error {
 			step.Input = resolvedInput
 
 			// Phase 6: Agent Routing & Dispatch
-			// Find the optimal agent for this capability
+			// Re-verify the agent (it was selected above but we re-fetch to ensure safety in goroutine)
 			agentRecord, err := c.registry.SelectAgent(step.Capability)
 			if err != nil {
 				c.log.Error("No healthy agent found for capability", "capability", step.Capability, "error", err)
@@ -320,9 +330,19 @@ func (c *Coordinator) executeDAG() error {
 				return
 			}
 			agentManifest := &agentRecord.Manifest
+			step.AssignedAgent = agentManifest.AgentID
 
 			// Phase 5: Policy Engine (Firewall)
-			// We build a context for the CEL engine
+			// Fetch current usage/cost from task metadata
+			usage, _ := c.task.Metadata["usage"].(map[string]interface{})
+			if usage == nil {
+				usage = map[string]interface{}{"tokens": 0, "requests": 0}
+			}
+			cost, _ := c.task.Metadata["cost"].(map[string]interface{})
+			if cost == nil {
+				cost = map[string]interface{}{"usd": 0.0}
+			}
+
 			policyContext := map[string]interface{}{
 				"task": map[string]interface{}{
 					"goal": c.task.Goal,
@@ -333,15 +353,13 @@ func (c *Coordinator) executeDAG() error {
 				"agent": map[string]interface{}{
 					"agent_id": agentManifest.AgentID,
 				},
-				"env": c.config.Environment,
+				"env":   c.config.Environment,
+				"usage": usage,
+				"cost":  cost,
 			}
 
-			// Example: Global kernel policy strings (would be in config in real impl)
-			globalPolicies := []string{
-				"env == 'production' ? true : true", // Placeholder
-			}
-
-			if err := c.policy.EvaluateAll(globalPolicies, policyContext); err != nil {
+			// Phase 5: Policy Evaluation
+			if err := c.policy.EvaluateAll(c.config.GlobalPolicies, policyContext); err != nil {
 				c.log.Warn("Policy denied execution", "step_id", step.StepID, "error", err)
 				c.audit.Log("policy_engine", "POLICY_DENIED", step.StepID, map[string]interface{}{"reason": err.Error(), "task_id": c.task.TaskID})
 				c.handleStepFailure(step, &types.Error{Code: types.ErrorCodePolicyDenied, Message: err.Error()}, agentManifest)
@@ -440,7 +458,12 @@ func (c *Coordinator) handleStepFailure(step *types.Step, err *types.Error, agen
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.log.Warn("Handling step failure", "step_id", step.StepID, "error_code", err.Code, "retry_count", step.RetryCount)
+	agentID := "unknown"
+	if agent != nil {
+		agentID = agent.AgentID
+	}
+
+	c.log.Warn("Handling step failure", "step_id", step.StepID, "error_code", err.Code, "retry_count", step.RetryCount, "agent_id", agentID)
 
 	// Tier 1: Retry (if retryable and attempts < max)
 	// We use the configured kernel defaults if no specific policy exists on the step.

@@ -68,6 +68,13 @@ func (s *Server) handleGetState(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Verify that the agent is registered
+	_, err := s.registry.GetAgent(agentID)
+	if err != nil {
+		jsonResponse(w, http.StatusForbidden, map[string]string{"error": "Agent not registered"})
+		return
+	}
+
 	key := chi.URLParam(r, "key")
 	data, err := s.agentStore.Get(agentID, key)
 	if err != nil {
@@ -93,9 +100,9 @@ func (s *Server) handlePutState(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fetch manifest to check quota (real impl would pull from registry)
-	agent, _ := s.registry.SelectAgent("any") // Mocking for now
-	if agent == nil {
+	// Fetch real manifest to check quota
+	agent, err := s.registry.GetAgent(agentID)
+	if err != nil {
 		jsonResponse(w, http.StatusForbidden, map[string]string{"error": "Agent not registered"})
 		return
 	}

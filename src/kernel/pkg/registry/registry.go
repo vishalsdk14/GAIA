@@ -18,6 +18,7 @@
 package registry
 
 import (
+	"fmt"
 	"gaia/kernel/pkg/types"
 	"sync"
 )
@@ -32,8 +33,10 @@ type CapabilityRegistry interface {
 	UpdateHealth(agentID string, success bool, latencyMS int) error
 	Heartbeat(agentID string) error
 	SelectAgent(capability string) (*types.AgentRecord, error)
+	GetAgent(agentID string) (*types.AgentRecord, error)
 	ListAgents() []*types.AgentRecord
 	ListCapabilities() []string
+	GetAllCapabilities() []types.Capability
 }
 
 // InMemoryRegistry is the Foundation Phase implementation of the CapabilityRegistry.
@@ -53,6 +56,18 @@ func NewInMemoryRegistry() *InMemoryRegistry {
 	}
 }
 
+// GetAgent retrieves a specific agent record by its ID.
+func (r *InMemoryRegistry) GetAgent(agentID string) (*types.AgentRecord, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	agent, exists := r.agents[agentID]
+	if !exists {
+		return nil, fmt.Errorf("registry: agent %s not found", agentID)
+	}
+	return agent, nil
+}
+
 // ListAgents returns all registered agents.
 func (r *InMemoryRegistry) ListAgents() []*types.AgentRecord {
 	r.mu.RLock()
@@ -65,7 +80,6 @@ func (r *InMemoryRegistry) ListAgents() []*types.AgentRecord {
 	return list
 }
 
-// ListCapabilities returns all registered capabilities.
 func (r *InMemoryRegistry) ListCapabilities() []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -75,4 +89,23 @@ func (r *InMemoryRegistry) ListCapabilities() []string {
 		list = append(list, c)
 	}
 	return list
+}
+
+// GetAllCapabilities returns the full definitions of all registered capabilities.
+func (r *InMemoryRegistry) GetAllCapabilities() []types.Capability {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	var all []types.Capability
+	seen := make(map[string]bool)
+
+	for _, agent := range r.agents {
+		for _, cap := range agent.Manifest.Capabilities {
+			if !seen[cap.Name] {
+				all = append(all, cap)
+				seen[cap.Name] = true
+			}
+		}
+	}
+	return all
 }

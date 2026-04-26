@@ -78,6 +78,10 @@ func IsRetryable(step *types.Step, err *types.Error, agent *types.AgentManifest)
 	}
 
 	// 2. Check Idempotency Constraints (Failure Handling Spec 2.2)
+	if agent == nil {
+		return false // Cannot verify idempotency without agent manifest
+	}
+
 	// We check if the agent capability is explicitly marked as idempotent.
 	var cap *types.Capability
 	for i := range agent.Capabilities {

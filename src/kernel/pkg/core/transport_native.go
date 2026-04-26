@@ -38,7 +38,14 @@ func (t *NativeTransport) Dispatch(req *types.Request, agent *types.AgentManifes
 		return nil, fmt.Errorf("transport: failed to marshal request: %w", err)
 	}
 
-	httpReq, err := http.NewRequest("POST", agent.Endpoint, bytes.NewBuffer(body))
+	url := agent.Endpoint
+	if url[len(url)-1] == '/' {
+		url += "invoke"
+	} else {
+		url += "/invoke"
+	}
+
+	httpReq, err := http.NewRequest("POST", url, bytes.NewBuffer(body))
 	if err != nil {
 		return nil, fmt.Errorf("transport: failed to create http request: %w", err)
 	}
