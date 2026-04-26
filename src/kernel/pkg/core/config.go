@@ -72,6 +72,15 @@ type KernelConfig struct {
 
 	// AuditLogPath is the location of the immutable, tamper-proof audit trail.
 	AuditLogPath string `json:"audit_log_path"`
+
+	// GlobalPolicies are system-wide CEL rules evaluated for every task (Phase 10).
+	GlobalPolicies []string `json:"global_policies,omitempty"`
+
+	// EnablePerformanceProfiling starts the pprof server if true (Phase 11).
+	EnablePerformanceProfiling bool `json:"enable_performance_profiling"`
+
+	// InterpolationEngine specifies which engine to use ('legacy' or 'fast').
+	InterpolationEngine string `json:"interpolation_engine"`
 }
 
 // DefaultConfig returns a sane set of defaults for the GAIA Kernel.
@@ -90,5 +99,11 @@ func DefaultConfig() *KernelConfig {
 		RetryBaseDelayMS:   500,
 		RetryMaxDelayMS:    10000,
 		AuditLogPath:       "./data/audit.log",
+		GlobalPolicies: []string{
+			"usage.tokens < 100000",
+			"cost.usd < 10.0",
+		},
+		EnablePerformanceProfiling: false,
+		InterpolationEngine:        "fast",
 	}
 }

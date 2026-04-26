@@ -48,6 +48,13 @@ func NewOrchestrator(c *KernelConfig, r registry.CapabilityRegistry, ts *state.T
 	}
 }
 
+// Config returns the current kernel configuration.
+func (o *Orchestrator) Config() *KernelConfig {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	return o.config
+}
+
 // SubmitTask initializes a new task, persists it, and starts the coordination loop.
 func (o *Orchestrator) SubmitTask(goal string) (*types.Task, error) {
 	o.mu.Lock()

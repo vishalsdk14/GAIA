@@ -179,16 +179,22 @@ func (s *SQLiteStore) Get(agentID string, key string) (interface{}, error) {
 }
 
 // Delete removes a specific key from an agent's namespace.
+// Phase 11: Records a tombstone in history for reliable restoration.
 func (s *SQLiteStore) Delete(agentID string, key string) error {
 	_, err := s.DB.Exec(`DELETE FROM agent_state WHERE agent_id = ? AND state_key = ?`, agentID, key)
 	if err != nil {
 		return fmt.Errorf("state: failed to delete key: %w", err)
 	}
-	return nil
+
+	// Record Tombstone (state_data = NULL)
+	_, err = s.DB.Exec(`INSERT INTO agent_state_history (agent_id, state_key, state_data) VALUES (?, ?, NULL)`, agentID, key)
+	return err
 }
 
 // DeleteNamespace acts as the "Kill Switch" to instantly purge all data for an agent.
 func (s *SQLiteStore) DeleteNamespace(agentID string) error {
+	// For simplicity in Phase 11, we don't tombstone every key in a namespace drop,
+	// but in a production system, this would be a single high-level event.
 	_, err := s.DB.Exec(`DELETE FROM agent_state WHERE agent_id = ?`, agentID)
 	if err != nil {
 		return fmt.Errorf("state: failed to drop namespace: %w", err)
@@ -236,11 +242,13 @@ func (s *SQLiteStore) RestoreAgentState(agentID string, targetTime string) error
 	}
 
 	// 2. Reconstruct state from history: find the latest entry for each key <= targetTime
+	// Note: We skip entries where state_data is NULL (Tombstones)
 	query := `
 	INSERT INTO agent_state (agent_id, state_key, state_data, updated_at)
 	SELECT h.agent_id, h.state_key, h.state_data, h.created_at
 	FROM agent_state_history h
 	WHERE h.agent_id = ? AND h.created_at <= ?
+	AND h.state_data IS NOT NULL
 	AND h.id IN (
 		SELECT MAX(id) FROM agent_state_history 
 		WHERE agent_id = ? AND created_at <= ?

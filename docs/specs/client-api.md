@@ -25,7 +25,10 @@ This document defines the external-facing Application Programming Interface (API
 | `/api/v1/stream` | `WS` | ✅ Complete | Real-time event streaming |
 | `/api/v1/tasks/{id}/steps/{stepID}/approve` | `POST` | ✅ Complete | Manual approval gate |
 | `/api/v1/tasks/{id}/plan` | `PUT` | ✅ Complete | Manual plan override |
-| `/api/v1/admin/audit-logs` | `GET` | 🔲 Pending | Audit trail retrieval |
+| `/api/v1/admin/audit-logs` | `GET` | ✅ Complete | Audit trail retrieval |
+| `/api/v1/admin/audit/verify` | `POST` | ✅ Complete | Manual integrity check |
+| `/api/v1/admin/agents/{id}/restore` | `POST` | ✅ Complete | Agent state restoration |
+| `/api/v1/admin/tasks/{id}/trace` | `GET` | ✅ Complete | Cryptographic trace |
 
 ---
 

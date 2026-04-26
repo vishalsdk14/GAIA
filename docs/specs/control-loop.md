@@ -24,6 +24,8 @@ These invariants must hold at **all times** during loop execution. Violating any
 4. **Deny-by-Default**: No step shall be dispatched without passing the Policy Engine validation phase.
 5. **Schema Enforcement**: Every input sent to an agent and every output received from an agent must be validated against the declared JSON Schema. Non-conforming data is a hard failure.
 6. **Deterministic Processing**: Given the same plan and the same agent responses, the kernel must produce the same state transitions (design.md Section 18).
+7. **Governance Enforcement**: No step shall be completed without recording a tamper-proof audit log entry (Phase 10).
+8. **Resource Quotas**: Multi-tenant execution must respect per-task resource and cost limits (Phase 11).
 
 ---
 
@@ -207,6 +209,7 @@ If `get_ready_steps()` returns empty AND there are steps with `status == pending
 2. If a reference cannot be resolved → Step fails with `EXECUTION_FAILED("unresolvable interpolation: {{step_3.output.missing}}")`.
 3. Circular references are impossible if Phase 3 correctly enforces the DAG.
 4. Interpolation is performed by the **Kernel**, not by the agent. The agent receives fully resolved input.
+5. **High-Performance Interpolation**: For latency-sensitive paths, the Kernel uses a zero-allocation scanner with nested dot-notation support (`FastResolveInterpolation`).
 
 ---
 
@@ -303,6 +306,13 @@ else:
     step.error = response.error
     proceed to Phase 8
 ```
+
+### 7.1.1 Governance Audit (Phase 10)
+
+Every `STEP_COMPLETED` result must be cryptographically signed and chained into the audit log:
+1. Extract `usage` (tokens/cost) from response.
+2. Verify link to previous audit hash.
+3. Commit HMAC-SHA256 signature to `audit.log`.
 
 ### 7.2 State Update
 

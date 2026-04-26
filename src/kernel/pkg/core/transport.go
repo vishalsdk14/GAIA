@@ -32,6 +32,8 @@ type ProtocolDispatcher struct {
 	mcp    *MCPTransport
 	a2a    *A2ATransport
 	ws     *WSTransport
+	grpc   *GRPCTransport
+	ipc    *IPCTransport
 }
 
 func NewProtocolDispatcher() *ProtocolDispatcher {
@@ -40,12 +42,24 @@ func NewProtocolDispatcher() *ProtocolDispatcher {
 		mcp:    &MCPTransport{},
 		a2a:    &A2ATransport{},
 		ws:     NewWSTransport(),
+		grpc:   &GRPCTransport{},
+		ipc:    &IPCTransport{},
 	}
 }
 
 func (d *ProtocolDispatcher) Dispatch(req *types.Request, agent *types.AgentManifest) (*types.Response, error) {
+	// Phase 11: Hybrid Routing
+	// If transport is IPC or Endpoint starts with ipc://, use IPC path regardless of protocol adapter
+	if agent.Transport == types.TransportIPC {
+		return d.ipc.Dispatch(req, agent)
+	}
+
+	// Route based on protocol
 	switch agent.Protocol {
 	case types.ProtocolNative:
+		if agent.Transport == types.TransportGRPC {
+			return d.grpc.Dispatch(req, agent)
+		}
 		return d.native.Dispatch(req, agent)
 	case types.ProtocolMCP:
 		return d.mcp.Dispatch(req, agent)
@@ -56,6 +70,22 @@ func (d *ProtocolDispatcher) Dispatch(req *types.Request, agent *types.AgentMani
 	default:
 		return nil, fmt.Errorf("transport: unsupported protocol: %s", agent.Protocol)
 	}
+}
+
+// GRPCTransport implements high-performance remote agent communication (Phase 11).
+type GRPCTransport struct{}
+
+func (g *GRPCTransport) Dispatch(req *types.Request, agent *types.AgentManifest) (*types.Response, error) {
+	// TODO: Implement gRPC client logic
+	return nil, fmt.Errorf("transport: gRPC support is in implementation")
+}
+
+// IPCTransport implements zero-latency local agent communication (Phase 11).
+type IPCTransport struct{}
+
+func (i *IPCTransport) Dispatch(req *types.Request, agent *types.AgentManifest) (*types.Response, error) {
+	// TODO: Implement Unix Domain Socket / Shared Memory logic
+	return nil, fmt.Errorf("transport: IPC support is in implementation")
 }
 
 // MockTransport provides a Foundation phase scaffold for testing.

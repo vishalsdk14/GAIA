@@ -37,6 +37,9 @@ type AuditEntry struct {
 	PrevHash  string                 `json:"prev_hash"`
 }
 
+// InitialHash is the seed for the cryptographic audit chain.
+const InitialHash = "0000000000000000000000000000000000000000000000000000000000000000"
+
 // AuditLogger implements a tamper-proof, append-only audit log with HMAC-SHA256 chaining.
 type AuditLogger struct {
 	mu       sync.Mutex
@@ -53,7 +56,7 @@ func InitAuditLogger(path string, secret []byte) (*AuditLogger, error) {
 	auditOnce.Do(func() {
 		globalAudit = &AuditLogger{
 			filePath: path,
-			lastHash: "0000000000000000000000000000000000000000000000000000000000000000",
+			lastHash: InitialHash,
 			secret:   secret,
 		}
 	})
@@ -121,7 +124,7 @@ func (a *AuditLogger) VerifyChain() error {
 	}
 	defer f.Close()
 
-	var lastHash = "0000000000000000000000000000000000000000000000000000000000000000"
+	var lastHash = InitialHash
 	decoder := json.NewDecoder(f)
 
 	for decoder.More() {
@@ -132,7 +135,7 @@ func (a *AuditLogger) VerifyChain() error {
 
 		// Verify Link
 		if entry.PrevHash != lastHash {
-			return fmt.Errorf("audit: chain broken at entry %s (expected prev %s, got %s)", entry.LogID, lastHash, entry.PrevHash)
+			return fmt.Errorf("audit: chain broken at entry %s (expected prev %s, got %s). Potential log truncation or deletion detected.", entry.LogID, lastHash, entry.PrevHash)
 		}
 
 		// Verify Signature
@@ -142,7 +145,7 @@ func (a *AuditLogger) VerifyChain() error {
 		expectedHash := hex.EncodeToString(mac.Sum(nil))
 
 		if entry.Hash != expectedHash {
-			return fmt.Errorf("audit: signature mismatch at entry %s (tampered content or invalid secret)", entry.LogID)
+			return fmt.Errorf("audit: integrity violation at entry %s. Content has been modified or signing secret is invalid.", entry.LogID)
 		}
 
 		lastHash = entry.Hash

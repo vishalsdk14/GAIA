@@ -21,6 +21,8 @@ import (
 	"gaia/kernel/pkg/registry"
 	"gaia/kernel/pkg/state"
 	"log"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 )
 
@@ -35,9 +37,16 @@ func main() {
 	secrets := core.NewSecretRegistry()
 
 	// Initialize tamper-proof Audit Logger (Phase 10: HMAC-SHA256)
-	auditSecret, _ := secrets.GetSecret("AUDIT_SECRET")
+	auditSecret, err := secrets.GetSecret("AUDIT_SECRET")
+	if err != nil {
+		log.Fatalf("CRITICAL: AUDIT_SECRET is required but not set in the Secret Registry. Failed to initialize tamper-proof audit log: %v", err)
+	}
+	if len(auditSecret) < 32 {
+		log.Fatalf("CRITICAL: AUDIT_SECRET is too weak. HMAC-SHA256 requires at least 32 bytes of entropy for Enterprise Governance.")
+	}
+
 	if al, err := logger.InitAuditLogger(config.AuditLogPath, []byte(auditSecret)); err != nil {
-		log.Printf("Warning: Failed to initialize audit log: %v\n", err)
+		log.Fatalf("CRITICAL: Failed to initialize audit log: %v\n", err)
 	} else {
 		// Phase 10: Verify chain integrity on startup
 		if err := al.VerifyChain(); err != nil {
@@ -51,6 +60,16 @@ func main() {
 		"log_level", config.LogLevel,
 		"db_path", config.DBPath,
 	)
+
+	// Phase 11: Performance Profiling
+	if config.EnablePerformanceProfiling {
+		go func() {
+			logger.L.Info("Performance profiling enabled", "port", "6060")
+			if err := http.ListenAndServe("localhost:6060", nil); err != nil {
+				logger.L.Error("pprof server failed", "error", err)
+			}
+		}()
+	}
 
 	// 1. Initialize State Storage (Tier 2 & 4)
 	store, err := state.NewSQLiteStore(config.DBPath)

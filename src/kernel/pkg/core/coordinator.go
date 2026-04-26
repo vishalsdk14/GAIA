@@ -125,7 +125,7 @@ func (c *Coordinator) phase1Submission() error {
 	
 	c.log.Info("Task transitioned to planning")
 	c.events.Emit(common.Event{Type: types.EventTaskPlanning, TaskID: c.task.TaskID})
-	c.audit.Log("kernel", string(types.EventTaskPlanning), c.task.TaskID, nil)
+	c.audit.Log("kernel", string(types.EventTaskPlanning), c.task.TaskID, map[string]interface{}{"task_id": c.task.TaskID})
 	
 	// Checkpoint 1: Initial Submission
 	if err := c.taskStore.SaveTask(c.task); err != nil {
@@ -151,7 +151,8 @@ func (c *Coordinator) phase2Planning() error {
 	var lastErr error
 	var correctionPrompt string
 	
-	for attempt := 0; attempt < 2; attempt++ {
+	maxRetries := c.config.MaxReplans // Or add PlannerMaxRetries to config
+	for attempt := 0; attempt <= maxRetries; attempt++ {
 		goal := c.task.Goal
 		if correctionPrompt != "" {
 			goal = correctionPrompt
@@ -176,7 +177,7 @@ func (c *Coordinator) phase2Planning() error {
 		c.task.Plan = plan.Steps
 		c.log.Info("Plan generated successfully", "step_count", len(plan.Steps))
 		c.events.Emit(common.Event{Type: types.EventPlanGenerated, TaskID: c.task.TaskID})
-		c.audit.Log("planner", string(types.EventPlanGenerated), c.task.TaskID, map[string]interface{}{"step_count": len(plan.Steps)})
+		c.audit.Log("planner", string(types.EventPlanGenerated), c.task.TaskID, map[string]interface{}{"step_count": len(plan.Steps), "task_id": c.task.TaskID})
 
 		// Checkpoint 2: Plan Generation
 		if err := c.taskStore.SaveTask(c.task); err != nil {
@@ -210,7 +211,7 @@ func (c *Coordinator) failTask(err error) error {
 		TaskID:  c.task.TaskID,
 		Payload: map[string]interface{}{"error": err.Error()},
 	})
-	c.audit.Log("kernel", string(types.EventTaskFailed), c.task.TaskID, map[string]interface{}{"error": err.Error()})
+	c.audit.Log("kernel", string(types.EventTaskFailed), c.task.TaskID, map[string]interface{}{"error": err.Error(), "task_id": c.task.TaskID})
 	
 	return err
 }
@@ -219,6 +220,14 @@ func (c *Coordinator) failTask(err error) error {
 func (c *Coordinator) executeDAG() error {
 	// Phase 3: DAG Resolution
 	readySteps := GetReadySteps(c.task.Plan)
+
+	// Phase 10: Governance - Check Usage Policies
+	if err := c.checkUsagePolicies(); err != nil {
+		c.log.Error("Task aborted by governance policy", "error", err)
+		c.task.Status = types.TaskStatusFailed
+		c.task.Metadata["failure_reason"] = "Policy violation: " + err.Error()
+		return nil
+	}
 
 	if len(readySteps) == 0 {
 		// Are there any pending steps left?
@@ -238,6 +247,7 @@ func (c *Coordinator) executeDAG() error {
 			c.mu.Unlock()
 			c.log.Info("Task completed successfully")
 			c.events.Emit(common.Event{Type: types.EventTaskCompleted, TaskID: c.task.TaskID})
+			c.audit.Log("kernel", string(types.EventTaskCompleted), c.task.TaskID, map[string]interface{}{"task_id": c.task.TaskID})
 		}
 		return nil
 	}
@@ -276,7 +286,14 @@ func (c *Coordinator) executeDAG() error {
 			hotStateMap := c.stateMgr.GetSnapshot() // Collapses DeltaLog and returns map
 			c.mu.Unlock()
 
-			resolvedInput, err := ResolveInterpolation(step.Input, hotStateMap)
+			var resolvedInput interface{}
+			var err error
+			if c.config.InterpolationEngine == "legacy" {
+				resolvedInput, err = ResolveInterpolation(step.Input, hotStateMap)
+			} else {
+				resolvedInput, err = FastResolveInterpolation(step.Input, hotStateMap)
+			}
+
 			if err != nil {
 				c.failStep(step, "INTERPOLATION_FAILED", err.Error())
 				errChan <- err
@@ -307,7 +324,7 @@ func (c *Coordinator) executeDAG() error {
 
 			if err := c.policy.EvaluateAll(globalPolicies, policyContext); err != nil {
 				c.log.Warn("Policy denied execution", "step_id", step.StepID, "error", err)
-				c.audit.Log("policy_engine", "POLICY_DENIED", step.StepID, map[string]interface{}{"reason": err.Error()})
+				c.audit.Log("policy_engine", "POLICY_DENIED", step.StepID, map[string]interface{}{"reason": err.Error(), "task_id": c.task.TaskID})
 				c.handleStepFailure(step, &types.Error{Code: types.ErrorCodePolicyDenied, Message: err.Error()}, agentManifest)
 				return
 			}
@@ -356,7 +373,7 @@ func (c *Coordinator) executeDAG() error {
 
 			c.log.Info("Dispatching step", "step_id", step.StepID, "capability", step.Capability)
 			c.events.Emit(common.Event{Type: types.EventStepStarted, TaskID: c.task.TaskID, StepID: step.StepID})
-			c.audit.Log("kernel", string(types.EventStepStarted), step.StepID, map[string]interface{}{"agent": agentManifest.AgentID})
+			c.audit.Log("kernel", string(types.EventStepStarted), step.StepID, map[string]interface{}{"agent": agentManifest.AgentID, "task_id": c.task.TaskID})
 
 			resp, err := c.transport.Dispatch(req, agentManifest)
 			if err != nil {
@@ -377,6 +394,7 @@ func (c *Coordinator) executeDAG() error {
 
 				c.log.Info("Step completed", "step_id", step.StepID)
 				c.events.Emit(common.Event{Type: types.EventStepCompleted, TaskID: c.task.TaskID, StepID: step.StepID})
+				c.audit.Log("kernel", string(types.EventStepCompleted), step.StepID, map[string]interface{}{"task_id": c.task.TaskID})
 
 				// Checkpoint 3: Step Completion
 				if err := c.taskStore.SaveTask(c.task); err != nil {
@@ -547,5 +565,50 @@ func (c *Coordinator) UpdatePlan(newPlan []types.Step) error {
 	if c.taskStore != nil {
 		return c.taskStore.SaveTask(c.task)
 	}
+	return nil
+}
+
+// checkUsagePolicies evaluates governance rules involving cost and usage metrics.
+func (c *Coordinator) checkUsagePolicies() error {
+	// 1. Prepare usage/cost context
+	// In a real implementation, these would be pulled from a real-time tracking service.
+	// For Phase 10, we simulate usage data in the task metadata.
+	usage := make(map[string]interface{})
+	cost := make(map[string]interface{})
+	
+	if u, ok := c.task.Metadata["usage"].(map[string]interface{}); ok {
+		usage = u
+	} else {
+		usage["tokens"] = 0
+		usage["requests"] = 0
+	}
+	
+	if cs, ok := c.task.Metadata["cost"].(map[string]interface{}); ok {
+		cost = cs
+	} else {
+		cost["usd"] = 0.0
+	}
+
+	context := map[string]interface{}{
+		"task":  c.task,
+		"usage": usage,
+		"cost":  cost,
+		"env":   "production",
+	}
+
+	// 2. Evaluate Global Governance Policies
+	// Example: "usage.tokens < 5000"
+	for _, p := range c.config.GlobalPolicies {
+		// Only evaluate policies that mention usage or cost
+		// (Primitive check for Phase 10)
+		success, err := c.policy.Evaluate(p, context)
+		if err != nil {
+			continue // Skip non-boolean or invalid policies here
+		}
+		if !success {
+			return fmt.Errorf("governance limit exceeded: %s", p)
+		}
+	}
+
 	return nil
 }

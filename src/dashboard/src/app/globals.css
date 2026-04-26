@@ -10,9 +10,11 @@
   --success: #22c55e;
   --warning: #eab308;
   --error: #ef4444;
+  --accent: #a855f7;
   
   --glass: rgba(255, 255, 255, 0.05);
   --border: rgba(255, 255, 255, 0.1);
+  --text-muted: rgba(255, 255, 255, 0.2);
 }
 
 body {
@@ -51,5 +53,5 @@ body {
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--text-muted);
 }

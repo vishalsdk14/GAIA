@@ -34,22 +34,22 @@ const CustomNode = ({ data }: any) => {
   const getStatusStyles = (status: string) => {
     switch (status) {
       case 'done': return { 
-        borderColor: 'rgba(34, 197, 94, 0.5)', 
+        borderColor: theme.colors.success.glow, 
         backgroundColor: theme.colors.success.subtle, 
         color: theme.colors.success.DEFAULT 
       };
       case 'failed': return { 
-        borderColor: 'rgba(239, 68, 68, 0.5)', 
+        borderColor: theme.colors.error.glow, 
         backgroundColor: theme.colors.error.subtle, 
         color: theme.colors.error.DEFAULT 
       };
       case 'running': return { 
-        borderColor: 'rgba(99, 102, 241, 0.5)', 
+        borderColor: theme.colors.primary.glow, 
         backgroundColor: theme.colors.primary.subtle, 
         color: theme.colors.primary.DEFAULT 
       };
       case 'awaiting_approval': return { 
-        borderColor: 'rgba(234, 179, 8, 0.5)', 
+        borderColor: theme.colors.warning.glow, 
         backgroundColor: theme.colors.warning.subtle, 
         color: theme.colors.warning.DEFAULT,
         boxShadow: `0 0 15px -3px ${theme.colors.warning.glow}`
@@ -93,7 +93,7 @@ const CustomNode = ({ data }: any) => {
               data.onApprove(data.id);
             }}
             className="mt-2 py-1 px-2 text-[10px] font-bold rounded uppercase transition-colors"
-            style={{ backgroundColor: theme.colors.warning.DEFAULT, color: '#000' }}
+            style={{ backgroundColor: theme.colors.warning.DEFAULT, color: theme.colors.background }}
           >
             Approve Action
           </button>
@@ -152,7 +152,7 @@ const DAGView = ({ plan, onApprove }: { plan: any[], taskID: string, onApprove: 
         nodeTypes={nodeTypes}
         fitView
       >
-        <Background color="#111" gap={20} />
+        <Background color={theme.colors.surface.elevated} gap={20} />
         <Controls className="!bg-white/5 !border-white/10 !fill-white" />
       </ReactFlow>
     </div>

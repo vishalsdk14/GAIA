@@ -44,6 +44,11 @@ export const colors = {
     glow: 'rgba(239, 68, 68, 0.5)',
     subtle: 'rgba(239, 68, 68, 0.1)',
   },
+  accent: {
+    DEFAULT: '#a855f7',
+    glow: 'rgba(168, 85, 247, 0.5)',
+    subtle: 'rgba(168, 85, 247, 0.1)',
+  },
   
   text: {
     primary: 'rgba(255, 255, 255, 0.9)',
@@ -55,5 +60,6 @@ export const colors = {
     base: 'rgba(0, 0, 0, 0.2)',
     elevated: 'rgba(255, 255, 255, 0.05)',
     overlay: 'rgba(255, 255, 255, 0.1)',
+    deep: 'rgba(0, 0, 0, 0.4)',
   }
 };

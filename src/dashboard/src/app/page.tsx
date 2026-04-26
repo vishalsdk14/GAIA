@@ -61,7 +61,7 @@ export default function Dashboard() {
       
       <div className="flex-1 flex overflow-hidden">
         {/* Sidebar */}
-        <aside className="border-r flex flex-col bg-black/20" style={{ width: theme.spacing.sidebarWidth, borderColor: theme.colors.border }}>
+        <aside className="border-r flex flex-col" style={{ width: theme.spacing.sidebarWidth, borderColor: theme.colors.border, backgroundColor: theme.colors.surface.base }}>
           <div className="p-4 border-b" style={{ borderColor: theme.colors.border }}>
             <form onSubmit={handleSubmit} className="relative">
               <input 
@@ -83,7 +83,7 @@ export default function Dashboard() {
             <TaskList onSelect={setSelectedTaskID} selectedID={selectedTaskID} />
           </div>
           
-          <div className="p-4 border-t bg-black/40" style={{ borderColor: theme.colors.border }}>
+          <div className="p-4 border-t" style={{ borderColor: theme.colors.border, backgroundColor: theme.colors.surface.deep }}>
             <nav className="flex flex-col gap-1">
               <a href="#" className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium" style={{ backgroundColor: theme.colors.primary.subtle, color: theme.colors.primary.DEFAULT }}>
                 <LayoutDashboard className="w-4 h-4" /> Dashboard
@@ -102,7 +102,7 @@ export default function Dashboard() {
         </aside>
 
         {/* Main Content */}
-        <section className="flex-1 flex flex-col bg-black/40 p-6 relative">
+        <section className="flex-1 flex flex-col p-6 relative" style={{ backgroundColor: theme.colors.surface.deep }}>
           {!selectedTask ? (
             <div className="flex-1 flex flex-col items-center justify-center opacity-20 pointer-events-none">
               <div className="w-24 h-24 border-2 border-dashed rounded-full flex items-center justify-center mb-6" style={{ borderColor: theme.colors.border }}>
@@ -131,7 +131,7 @@ export default function Dashboard() {
                         className="h-full transition-all duration-1000"
                         style={{ 
                           width: `${(selectedTask.plan.filter((s:any) => s.status === 'done').length / selectedTask.plan.length) * 100}%`,
-                          background: `linear-gradient(to right, ${theme.colors.primary.DEFAULT}, #a855f7)`
+                          background: `linear-gradient(to right, ${theme.colors.primary.DEFAULT}, ${theme.colors.accent.DEFAULT})`
                         }}
                       />
                     </div>

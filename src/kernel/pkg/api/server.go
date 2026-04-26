@@ -90,6 +90,7 @@ func (s *Server) setupRoutes() {
 			r.Get("/admin/audit-logs", s.handleListAuditLogs)
 			r.Post("/admin/audit/verify", s.handleVerifyAuditIntegrity)
 			r.Post("/admin/agents/{agentID}/restore", s.handleRestoreAgentState)
+			r.Get("/admin/tasks/{taskID}/trace", s.handleTaskTrace)
 		})
 	})
 
