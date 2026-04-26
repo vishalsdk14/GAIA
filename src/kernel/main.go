@@ -35,6 +35,7 @@ func main() {
 
 	// Initialize default configuration
 	config := core.DefaultConfig()
+	config.LoadConfigFromEnv()
 
 	// Initialize structured logging
 	logger.Init(config.LogLevel)

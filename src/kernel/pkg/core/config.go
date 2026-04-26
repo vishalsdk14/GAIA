@@ -16,6 +16,10 @@
 // This includes the 10-phase control loop, task coordination, and planner integration.
 package core
 
+import (
+	"os"
+)
+
 // LLMProvider defines the supported types of LLM backends.
 type LLMProvider string
 
@@ -105,5 +109,31 @@ func DefaultConfig() *KernelConfig {
 		},
 		EnablePerformanceProfiling: false,
 		InterpolationEngine:        "fast",
+	}
+}
+
+// LoadConfigFromEnv overrides the default configuration with values from environment variables.
+// This follows the 12-factor app methodology and improves monorepo developer experience.
+func (c *KernelConfig) LoadConfigFromEnv() {
+	if val := os.Getenv("GAIA_PLANNER_PROVIDER"); val != "" {
+		c.PlannerProvider = LLMProvider(val)
+	}
+	if val := os.Getenv("GAIA_PLANNER_ENDPOINT"); val != "" {
+		c.PlannerEndpoint = val
+	}
+	if val := os.Getenv("GAIA_PLANNER_MODEL"); val != "" {
+		c.PlannerModel = val
+	}
+	if val := os.Getenv("GAIA_PLANNER_API_KEY"); val != "" {
+		c.PlannerAPIKey = val
+	}
+	if val := os.Getenv("GAIA_DB_PATH"); val != "" {
+		c.DBPath = val
+	}
+	if val := os.Getenv("GAIA_LOG_LEVEL"); val != "" {
+		c.LogLevel = val
+	}
+	if val := os.Getenv("GAIA_AUDIT_LOG_PATH"); val != "" {
+		c.AuditLogPath = val
 	}
 }
