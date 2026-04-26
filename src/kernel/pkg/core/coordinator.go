@@ -311,9 +311,18 @@ func (c *Coordinator) executeDAG() error {
 			}
 			step.Input = resolvedInput
 
+			// Phase 6: Agent Routing & Dispatch
+			// Find the optimal agent for this capability
+			agentRecord, err := c.registry.SelectAgent(step.Capability)
+			if err != nil {
+				c.log.Error("No healthy agent found for capability", "capability", step.Capability, "error", err)
+				c.handleStepFailure(step, &types.Error{Code: types.ErrorCodeAgentUnavailable, Message: err.Error()}, nil)
+				return
+			}
+			agentManifest := &agentRecord.Manifest
+
 			// Phase 5: Policy Engine (Firewall)
 			// We build a context for the CEL engine
-			agentManifest := &types.AgentManifest{AgentID: "mock.agent"} // Fetched from Registry in real impl
 			policyContext := map[string]interface{}{
 				"task": map[string]interface{}{
 					"goal": c.task.Goal,
@@ -366,7 +375,7 @@ func (c *Coordinator) executeDAG() error {
 				return
 			}
 
-			// Phase 6: Agent Routing & Dispatch
+			// Initialize Request
 			req := &types.Request{
 				Type:       "REQUEST",
 				RequestID:  "req-" + step.StepID,

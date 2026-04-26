@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"gaia/kernel/pkg/logger"
 	"gaia/kernel/pkg/types"
 
 	"github.com/go-chi/chi/v5"
@@ -167,6 +168,8 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "Invalid manifest JSON"})
 		return
 	}
+
+	logger.L.Info("Received agent registration", "agent_id", manifest.AgentID, "protocol", manifest.Protocol, "transport", manifest.Transport)
 
 	if manifest.AgentID == "" {
 		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "agent_id is required"})
