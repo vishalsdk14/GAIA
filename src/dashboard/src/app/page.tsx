@@ -16,16 +16,31 @@
 
 import React, { useState } from 'react';
 import Header from '@/components/Header';
-import TaskList from '@/components/TaskList';
+import Sidebar from '@/components/Sidebar';
 import DAGView from '@/components/DAGView';
+import NewMissionModal from '@/components/NewMissionModal';
+import Button from '@/components/Button';
 import useSWR from 'swr';
 import { fetcher, approveStep, submitTask } from '@/lib/api';
-import { Send, LayoutDashboard, Database, Activity, Shield } from 'lucide-react';
+import { 
+  Terminal, 
+  Cpu, 
+  Activity, 
+  ShieldAlert, 
+  Layers, 
+  Clock,
+  ExternalLink,
+  ChevronRight,
+  Info
+} from 'lucide-react';
 import { theme } from '@/theme';
 
+/**
+ * Dashboard is the primary entry point for the GAIA Control Center.
+ */
 export default function Dashboard() {
   const [selectedTaskID, setSelectedTaskID] = useState<string | null>(null);
-  const [goal, setGoal] = useState('');
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   const { data: selectedTask, mutate: mutateTask } = useSWR(
     selectedTaskID ? `/api/v1/tasks/${selectedTaskID}` : null,
@@ -33,15 +48,12 @@ export default function Dashboard() {
     { refreshInterval: 2000 }
   );
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!goal.trim()) return;
+  const handleCreateMission = async (goal: string) => {
     try {
       const task = await submitTask(goal);
       setSelectedTaskID(task.task_id);
-      setGoal('');
     } catch (err) {
-      console.error(err);
+      console.error('Failed to initialize mission:', err);
     }
   };
 
@@ -51,95 +63,196 @@ export default function Dashboard() {
       await approveStep(selectedTaskID, stepID);
       mutateTask();
     } catch (err) {
-      console.error(err);
+      console.error('Step approval failed:', err);
     }
   };
 
   return (
-    <main className="min-h-screen flex flex-col" style={{ backgroundColor: theme.colors.background, color: theme.colors.foreground }}>
+    <main className="h-screen flex flex-col relative overflow-hidden" style={{ color: theme.colors.text.primary, backgroundColor: theme.colors.background }}>
+      <div className="grid-bg absolute inset-0 pointer-events-none opacity-40" />
+      
       <Header />
       
       <div className="flex-1 flex overflow-hidden">
-        {/* Sidebar */}
-        <aside className="border-r flex flex-col" style={{ width: theme.spacing.sidebarWidth, borderColor: theme.colors.border, backgroundColor: theme.colors.surface.base }}>
-          <div className="p-4 border-b" style={{ borderColor: theme.colors.border }}>
-            <form onSubmit={handleSubmit} className="relative">
-              <input 
-                type="text" 
-                value={goal}
-                onChange={(e) => setGoal(e.target.value)}
-                placeholder="Submit new goal..."
-                style={{ backgroundColor: theme.colors.surface.elevated, borderColor: theme.colors.border }}
-                className="w-full border rounded-xl py-2 pl-4 pr-10 text-sm focus:outline-none focus:border-indigo-500/50 transition-all placeholder:text-white/20"
-              />
-              <button type="submit" className="absolute right-2 top-1/2 -translate-y-1/2 transition-colors" style={{ color: theme.colors.text.secondary }}>
-                <Send className="w-4 h-4" />
-              </button>
-            </form>
-          </div>
-          
-          <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
-            <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] mb-4 px-2" style={{ color: theme.colors.text.muted }}>Active Tasks</h2>
-            <TaskList onSelect={setSelectedTaskID} selectedID={selectedTaskID} />
-          </div>
-          
-          <div className="p-4 border-t" style={{ borderColor: theme.colors.border, backgroundColor: theme.colors.surface.deep }}>
-            <nav className="flex flex-col gap-1">
-              <a href="#" className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium" style={{ backgroundColor: theme.colors.primary.subtle, color: theme.colors.primary.DEFAULT }}>
-                <LayoutDashboard className="w-4 h-4" /> Dashboard
-              </a>
-              <a href="#" className="flex items-center gap-3 px-3 py-2 rounded-lg transition-all text-sm font-medium hover:bg-white/5" style={{ color: theme.colors.text.secondary }}>
-                <Database className="w-4 h-4" /> State Registry
-              </a>
-              <a href="#" className="flex items-center gap-3 px-3 py-2 rounded-lg transition-all text-sm font-medium hover:bg-white/5" style={{ color: theme.colors.text.secondary }}>
-                <Activity className="w-4 h-4" /> Agent Health
-              </a>
-              <a href="#" className="flex items-center gap-3 px-3 py-2 rounded-lg transition-all text-sm font-medium hover:bg-white/5" style={{ color: theme.colors.text.secondary }}>
-                <Shield className="w-4 h-4" /> Policy Logs
-              </a>
-            </nav>
-          </div>
+        {/* Navigation Rail */}
+        <aside 
+          className="flex-shrink-0 border-r flex flex-col items-center z-10 bg-white"
+          style={{ 
+            width: theme.spacing.railWidth, 
+            borderColor: theme.colors.border.subtle,
+            paddingTop: theme.spacing.xl,
+            gap: theme.spacing.md
+          }}
+        >
+           {[
+             { Icon: Layers, active: true },
+             { Icon: Cpu, active: false },
+             { Icon: Activity, active: false },
+             { Icon: ShieldAlert, active: false }
+           ].map((item, idx) => (
+             <Button 
+               key={idx}
+               variant={item.active ? 'primary' : 'ghost'}
+               size="icon"
+               icon={item.Icon}
+               style={{ 
+                 backgroundColor: item.active ? theme.colors.primary.DEFAULT : 'transparent',
+                 color: item.active ? '#ffffff' : theme.colors.text.muted,
+                 borderColor: 'transparent'
+               }}
+             />
+           ))}
         </aside>
 
-        {/* Main Content */}
-        <section className="flex-1 flex flex-col p-6 relative" style={{ backgroundColor: theme.colors.surface.deep }}>
+        {/* Modular Sidebar */}
+        <Sidebar 
+          onSelectTask={setSelectedTaskID} 
+          selectedTaskID={selectedTaskID} 
+          onOpenNewMission={() => setIsModalOpen(true)}
+        />
+
+        {/* Primary Stage */}
+        <section className="flex-1 flex flex-col relative bg-white/40 min-w-0">
           {!selectedTask ? (
-            <div className="flex-1 flex flex-col items-center justify-center opacity-20 pointer-events-none">
-              <div className="w-24 h-24 border-2 border-dashed rounded-full flex items-center justify-center mb-6" style={{ borderColor: theme.colors.border }}>
-                <LayoutDashboard className="w-10 h-10" />
+            <div className="flex-1 flex flex-col items-center justify-center relative">
+              <div 
+                className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full blur-[140px] pointer-events-none bg-blue-500/[0.04]" 
+                style={{ width: '600px', height: '600px' }}
+              />
+              <div className="relative z-10 flex flex-col items-center">
+                <div 
+                  className="border flex items-center justify-center bg-white shadow-xl"
+                  style={{ 
+                    width: '6.5rem', 
+                    height: '6.5rem', 
+                    borderRadius: theme.radius.xl,
+                    borderColor: theme.colors.border.subtle 
+                  }}
+                >
+                   <Terminal className="w-10 h-10 text-blue-500/40" strokeWidth={1.5} />
+                </div>
+                <h2 
+                  className="font-black italic mb-4"
+                  style={{ 
+                    fontSize: theme.typography.size['4xl'],
+                    letterSpacing: theme.typography.tracking.tighter,
+                    color: theme.colors.text.primary
+                  }}
+                >
+                  Awaiting Goal
+                </h2>
+                <p 
+                  className="font-bold uppercase"
+                  style={{ 
+                    fontSize: theme.typography.size.sm, 
+                    letterSpacing: theme.typography.tracking.widest,
+                    color: theme.colors.text.muted 
+                  }}
+                >
+                  Select or Initialize a mission to begin
+                </p>
+                
+                <Button 
+                  variant="primary" 
+                  size="lg" 
+                  onClick={() => setIsModalOpen(true)}
+                  className="mt-10"
+                  style={{ paddingLeft: theme.spacing['2xl'], paddingRight: theme.spacing['2xl'] }}
+                >
+                  Deploy New Mission
+                </Button>
               </div>
-              <h2 className="text-2xl font-light tracking-widest uppercase">Select a Task</h2>
-              <p className="text-sm mt-2">Monitor real-time agent coordination</p>
             </div>
           ) : (
-            <div className="flex-1 flex flex-col gap-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="flex items-center gap-3">
-                    <h2 className="text-2xl font-bold" style={{ color: theme.colors.text.primary }}>{selectedTask.goal}</h2>
-                    <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-tighter border" style={{ backgroundColor: theme.colors.primary.subtle, color: theme.colors.primary.DEFAULT, borderColor: theme.colors.primary.subtle }}>
-                      {selectedTask.status}
-                    </span>
-                  </div>
-                  <p className="text-xs mt-1 uppercase font-mono" style={{ color: theme.colors.text.muted }}>{selectedTask.task_id}</p>
+            <div className="flex-1 flex flex-col overflow-hidden">
+              {/* Context Bar */}
+              <div 
+                className="flex items-center justify-between border-b bg-white/80 backdrop-blur-md" 
+                style={{ 
+                  borderColor: theme.colors.border.subtle, 
+                  height: theme.spacing['4xl'],
+                  paddingLeft: theme.spacing.xl,
+                  paddingRight: theme.spacing.xl
+                }}
+              >
+                <div className="flex items-center gap-6">
+                   <div className="flex flex-col">
+                      <div className="flex items-center gap-4">
+                        <h2 
+                          className="font-black"
+                          style={{ 
+                            fontSize: theme.typography.size['2xl'],
+                            letterSpacing: theme.typography.tracking.tight,
+                            color: theme.colors.text.primary
+                          }}
+                        >
+                          {selectedTask.goal}
+                        </h2>
+                        <div 
+                          className="px-3 py-1 font-black uppercase border shadow-sm" 
+                          style={{ 
+                            fontSize: theme.typography.size.xs,
+                            letterSpacing: theme.typography.tracking.widest,
+                            backgroundColor: theme.colors.primary.subtle, 
+                            color: theme.colors.primary.DEFAULT, 
+                            borderColor: theme.colors.primary.glow,
+                            borderRadius: theme.radius.full
+                          }}
+                        >
+                          {selectedTask.status}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-5 mt-1.5">
+                         <span 
+                           className="font-bold flex items-center gap-1.5"
+                           style={{ fontSize: theme.typography.size.sm, color: theme.colors.text.muted }}
+                         >
+                            <Info className="w-3.5 h-3.5" /> {selectedTask.task_id}
+                         </span>
+                         <span 
+                           className="font-bold flex items-center gap-1.5"
+                           style={{ fontSize: theme.typography.size.sm, color: theme.colors.text.muted }}
+                         >
+                            <Clock className="w-3.5 h-3.5" /> Started 2m ago
+                         </span>
+                      </div>
+                   </div>
                 </div>
-                <div className="flex items-center gap-4">
-                  <div className="text-right">
-                    <p className="text-[10px] uppercase font-bold tracking-widest" style={{ color: theme.colors.text.muted }}>Execution Progress</p>
-                    <div className="w-32 h-1.5 rounded-full mt-1 overflow-hidden border" style={{ backgroundColor: theme.colors.surface.base, borderColor: theme.colors.border }}>
-                      <div 
-                        className="h-full transition-all duration-1000"
+                
+                <div className="flex items-center gap-10">
+                   <div className="flex flex-col items-end">
+                      <span 
+                        className="font-black uppercase mb-1.5"
                         style={{ 
-                          width: `${(selectedTask.plan.filter((s:any) => s.status === 'done').length / selectedTask.plan.length) * 100}%`,
-                          background: `linear-gradient(to right, ${theme.colors.primary.DEFAULT}, ${theme.colors.accent.DEFAULT})`
+                          fontSize: theme.typography.size.xs, 
+                          letterSpacing: theme.typography.tracking.widest,
+                          color: theme.colors.text.muted 
                         }}
-                      />
-                    </div>
-                  </div>
+                      >
+                        Execution Index
+                      </span>
+                      <div className="flex items-center gap-4">
+                         <div className="w-48 h-2 rounded-full bg-slate-100 overflow-hidden shadow-inner">
+                            <div 
+                              className="h-full transition-all duration-1000 rounded-full"
+                              style={{ 
+                                width: `${(selectedTask.plan.filter((s:any) => s.status === 'done').length / selectedTask.plan.length) * 100}%`,
+                                background: `linear-gradient(to right, ${theme.colors.primary.DEFAULT}, ${theme.colors.secondary.DEFAULT})`,
+                                boxShadow: theme.shadows.primary
+                              }}
+                            />
+                         </div>
+                         <span className="font-black text-blue-600" style={{ fontSize: theme.typography.size.md }}>
+                           {Math.round((selectedTask.plan.filter((s:any) => s.status === 'done').length / selectedTask.plan.length) * 100)}%
+                         </span>
+                      </div>
+                   </div>
+                   <Button size="icon" variant="secondary" icon={ExternalLink} />
                 </div>
               </div>
 
-              <div className="flex-1 min-h-0 relative">
+              {/* DAG Canvas */}
+              <div className="flex-1 relative min-h-0 bg-slate-50/50">
                 <DAGView 
                   plan={selectedTask.plan} 
                   taskID={selectedTask.task_id} 
@@ -147,29 +260,72 @@ export default function Dashboard() {
                 />
               </div>
 
-              {/* Console/Logs */}
-              <div className="h-48 glass rounded-2xl p-4 overflow-hidden flex flex-col">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-[10px] font-black uppercase tracking-widest" style={{ color: theme.colors.text.muted }}>Event Stream</h3>
-                  <div className="w-2 h-2 rounded-full animate-pulse shadow-[0_0_8px_rgba(99,102,241,0.8)]" style={{ backgroundColor: theme.colors.primary.DEFAULT }} />
-                </div>
-                <div className="flex-1 font-mono text-[11px] overflow-y-auto custom-scrollbar flex flex-col-reverse gap-1" style={{ color: theme.colors.text.secondary }}>
-                  {selectedTask.plan.filter((s:any) => s.status === 'done').map((s:any) => (
-                    <div key={s.step_id} className="flex gap-2">
-                      <span style={{ color: theme.colors.success.DEFAULT }}>✓</span>
-                      <span>Completed <span className="font-bold text-white/80">{s.capability}</span> in {s.step_id}</span>
+              {/* Event Feed */}
+              <div 
+                className="border-t flex flex-col bg-white/90 backdrop-blur-xl" 
+                style={{ 
+                  borderColor: theme.colors.border.subtle,
+                  height: theme.spacing.feedHeight 
+                }}
+              >
+                 <div 
+                   className="flex items-center justify-between border-b" 
+                   style={{ borderColor: theme.colors.border.subtle, paddingLeft: theme.spacing.xl, paddingRight: theme.spacing.xl, paddingTop: theme.spacing.md, paddingBottom: theme.spacing.md }}
+                 >
+                    <div className="flex items-center gap-2.5">
+                       <Terminal className="w-4 h-4 text-slate-400" strokeWidth={2} />
+                       <span 
+                         className="font-black uppercase"
+                         style={{ 
+                           fontSize: theme.typography.size.sm, 
+                           letterSpacing: theme.typography.tracking.widest,
+                           color: theme.colors.text.muted 
+                         }}
+                       >
+                         Orchestration Feed
+                       </span>
                     </div>
-                  ))}
-                  <div className="flex gap-2" style={{ color: theme.colors.primary.DEFAULT }}>
-                    <span className="animate-pulse">&gt;</span>
-                    <span>Monitoring control loop heartbeat...</span>
-                  </div>
-                </div>
+                    <div className="flex items-center gap-2.5">
+                       <span 
+                         className="font-bold uppercase"
+                         style={{ fontSize: theme.typography.size.xs, letterSpacing: theme.typography.tracking.widest, color: theme.colors.text.dim }}
+                       >
+                         v1.2 Sync
+                       </span>
+                       <div className="w-2 h-2 rounded-full bg-blue-500 shadow-lg" />
+                    </div>
+                 </div>
+                 <div className="flex-1 overflow-y-auto p-8 font-mono text-[12px] premium-scrollbar flex flex-col-reverse gap-4">
+                    {selectedTask.plan.filter((s:any) => s.status === 'done').map((s:any) => (
+                      <div key={s.step_id} className="flex gap-6 items-start group">
+                        <span className="text-emerald-500 font-bold flex-shrink-0">✓ OK</span>
+                        <div className="flex-1">
+                           <div className="text-slate-700 font-medium leading-relaxed">Agent completed <span className="text-blue-600 font-bold">{s.capability}</span> successfully.</div>
+                           <div className="text-[10px] text-slate-400 mt-1.5 flex items-center gap-3">
+                              <span className="px-2 py-0.5 bg-slate-100 rounded">ID: {s.step_id}</span>
+                              <ChevronRight className="w-3 h-3" />
+                              <span className="px-2 py-0.5 bg-slate-100 rounded">CHANNEL_VERIFIED</span>
+                           </div>
+                        </div>
+                        <span className="text-slate-300 font-medium tabular-nums opacity-0 group-hover:opacity-100 transition-opacity">12:05:44</span>
+                      </div>
+                    ))}
+                    <div className="flex gap-6 items-center">
+                       <span className="text-blue-500 font-bold flex-shrink-0 animate-pulse">● SYNC</span>
+                       <span className="text-slate-400 font-medium italic">Monitoring kernel...</span>
+                    </div>
+                 </div>
               </div>
             </div>
           )}
         </section>
       </div>
+
+      <NewMissionModal 
+        isOpen={isModalOpen} 
+        onClose={() => setIsModalOpen(false)} 
+        onSubmit={handleCreateMission} 
+      />
     </main>
   );
 }

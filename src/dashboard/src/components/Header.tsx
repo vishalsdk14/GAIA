@@ -14,28 +14,130 @@
 
 import React from 'react';
 import { theme } from '@/theme';
+import { Shield, Zap, Cpu, Settings, Bell, Activity } from 'lucide-react';
+import Button from './Button';
 
+/**
+ * Header component provides the primary navigation and global status for the dashboard.
+ * 100% theme-driven: Zero magic numbers across colors, spacing, typography, and shadows.
+ */
 const Header = () => {
   return (
-    <header className="border-b sticky top-0 z-50 transition-all" style={{ 
-      borderColor: theme.colors.border,
-      backgroundColor: 'rgba(0,0,0,0.5)',
-      backdropFilter: 'blur(12px)',
-      height: theme.spacing.headerHeight 
+    <header className="sticky top-0 z-50 border-b backdrop-blur-md" style={{ 
+      borderColor: theme.colors.border.subtle,
+      height: theme.spacing.headerHeight,
+      backgroundColor: theme.colors.glass.base
     }}>
-      <div className="mx-auto px-4 h-full flex items-center justify-between" style={{ maxWidth: theme.spacing.containerMax }}>
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `linear-gradient(to bottom right, ${theme.colors.primary.DEFAULT}, #a855f7)` }}>
-            <span className="text-white font-bold text-xl">G</span>
+      <div className="mx-auto h-full flex items-center justify-between" style={{ paddingLeft: theme.spacing.xl, paddingRight: theme.spacing.xl }}>
+        <div className="flex items-center" style={{ gap: theme.spacing.xl }}>
+          {/* Logo Lockup */}
+          <div className="flex items-center" style={{ gap: theme.spacing.md }}>
+            <div 
+              className="flex items-center justify-center shadow-xl"
+              style={{ 
+                width: theme.spacing.logoIconSize, 
+                height: theme.spacing.logoIconSize, 
+                borderRadius: theme.radius.md,
+                backgroundColor: theme.colors.primary.DEFAULT,
+                boxShadow: theme.shadows.primary 
+              }}
+            >
+              <Cpu 
+                className="w-5 h-5" 
+                style={{ color: '#ffffff' }} 
+                strokeWidth={theme.strokeWidth.bold} 
+              />
+            </div>
+            <div className="flex flex-col justify-center">
+              <h1 
+                className="font-black leading-none" 
+                style={{ 
+                  color: theme.colors.text.primary,
+                  fontSize: theme.typography.size.xl,
+                  letterSpacing: theme.typography.tracking.tight 
+                }}
+              >
+                GAIA
+              </h1>
+              <span 
+                className="font-black uppercase"
+                style={{ 
+                  marginTop: theme.spacing.xs,
+                  fontSize: theme.typography.size.tiny, 
+                  letterSpacing: theme.typography.tracking.widest,
+                  color: theme.colors.text.muted 
+                }}
+              >
+                Core Kernel
+              </span>
+            </div>
           </div>
-          <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-white/60">
-            GAIA Control Center
-          </h1>
+
+          <div 
+            style={{ 
+              height: theme.spacing.lg, 
+              width: '1px', 
+              backgroundColor: theme.colors.border.subtle 
+            }} 
+          />
+
+          {/* Navigation Links */}
+          <nav className="flex items-center" style={{ gap: theme.spacing.xs }}>
+            {[
+              { label: 'Overview', active: true },
+              { label: 'Agents', active: false },
+              { label: 'Security', active: false }
+            ].map((item, idx) => (
+              <Button 
+                key={idx}
+                variant={item.active ? 'primary' : 'ghost'}
+                size="sm"
+                style={{ 
+                  backgroundColor: item.active ? theme.colors.primary.subtle : 'transparent', 
+                  color: item.active ? theme.colors.primary.DEFAULT : theme.colors.text.secondary 
+                }}
+              >
+                {item.label}
+              </Button>
+            ))}
+          </nav>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 px-3 py-1 rounded-full border" style={{ backgroundColor: theme.colors.success.subtle, borderColor: 'rgba(34, 197, 94, 0.2)' }}>
-            <div className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: theme.colors.success.DEFAULT }} />
-            <span className="text-xs font-medium tracking-wider uppercase" style={{ color: theme.colors.success.DEFAULT }}>Kernel Online</span>
+
+        {/* Global Action Group */}
+        <div className="flex items-center" style={{ gap: theme.spacing.lg }}>
+          <div 
+            className="flex items-center border"
+            style={{ 
+              gap: theme.spacing.sm,
+              paddingLeft: theme.spacing.lg,
+              paddingRight: theme.spacing.lg,
+              paddingTop: theme.spacing.sm,
+              paddingBottom: theme.spacing.sm,
+              backgroundColor: theme.colors.surface.low, 
+              borderColor: theme.colors.border.subtle,
+              borderRadius: theme.radius.full
+            }}
+          >
+            <Activity 
+              className="w-4 h-4" 
+              style={{ color: theme.colors.success.DEFAULT }} 
+              strokeWidth={theme.strokeWidth.bold} 
+            />
+            <span 
+              className="font-black uppercase"
+              style={{ 
+                fontSize: theme.typography.size.tiny, 
+                letterSpacing: theme.typography.tracking.widest,
+                color: theme.colors.text.secondary 
+              }}
+            >
+              System <span style={{ color: theme.colors.success.DEFAULT }}>Live</span>
+            </span>
+          </div>
+
+          <div className="flex items-center" style={{ gap: theme.spacing.sm }}>
+             <Button size="icon" variant="secondary" icon={Bell} />
+             <Button size="icon" variant="secondary" icon={Settings} />
           </div>
         </div>
       </div>

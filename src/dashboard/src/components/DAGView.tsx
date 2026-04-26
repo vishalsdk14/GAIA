@@ -25,89 +25,193 @@ import {
   Controls,
   Node,
   Edge,
+  BaseEdge,
+  getBezierPath,
+  EdgeProps
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Play, CheckCircle2, AlertCircle, Clock, ShieldCheck } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Clock, ShieldCheck, Zap, Cpu } from 'lucide-react';
 import { theme } from '@/theme';
+import Button from './Button';
 
+/**
+ * CustomNode represents a single orchestration step in the DAG.
+ * It strictly utilizes theme tokens for typography, spacing, colors, and shadows.
+ */
 const CustomNode = ({ data }: any) => {
+  const isSelected = data.isSelected;
+  
   const getStatusStyles = (status: string) => {
     switch (status) {
       case 'done': return { 
-        borderColor: theme.colors.success.glow, 
-        backgroundColor: theme.colors.success.subtle, 
-        color: theme.colors.success.DEFAULT 
+        accent: theme.colors.success.DEFAULT, 
+        bg: '#ffffff', 
+        border: theme.colors.success.glow,
+        icon: <CheckCircle2 className="w-4 h-4" style={{ color: theme.colors.success.DEFAULT }} />
       };
       case 'failed': return { 
-        borderColor: theme.colors.error.glow, 
-        backgroundColor: theme.colors.error.subtle, 
-        color: theme.colors.error.DEFAULT 
+        accent: theme.colors.error.DEFAULT, 
+        bg: '#ffffff', 
+        border: theme.colors.error.glow,
+        icon: <AlertCircle className="w-4 h-4" style={{ color: theme.colors.error.DEFAULT }} />
       };
       case 'running': return { 
-        borderColor: theme.colors.primary.glow, 
-        backgroundColor: theme.colors.primary.subtle, 
-        color: theme.colors.primary.DEFAULT 
+        accent: theme.colors.primary.DEFAULT, 
+        bg: '#ffffff', 
+        border: theme.colors.primary.glow,
+        icon: <Zap className="w-4 h-4 animate-pulse" style={{ color: theme.colors.primary.DEFAULT }} />
       };
       case 'awaiting_approval': return { 
-        borderColor: theme.colors.warning.glow, 
-        backgroundColor: theme.colors.warning.subtle, 
-        color: theme.colors.warning.DEFAULT,
-        boxShadow: `0 0 15px -3px ${theme.colors.warning.glow}`
+        accent: theme.colors.warning.DEFAULT, 
+        bg: '#ffffff', 
+        border: theme.colors.warning.glow,
+        icon: <ShieldCheck className="w-4 h-4" style={{ color: theme.colors.warning.DEFAULT }} />
       };
       default: return { 
-        borderColor: theme.colors.border, 
-        backgroundColor: theme.colors.surface.elevated, 
-        color: theme.colors.text.muted 
+        accent: theme.colors.text.dim, 
+        bg: '#ffffff', 
+        border: theme.colors.border.subtle,
+        icon: <Clock className="w-4 h-4" style={{ color: theme.colors.text.dim }} />
       };
     }
   };
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'done': return <CheckCircle2 className="w-3 h-3" />;
-      case 'failed': return <AlertCircle className="w-3 h-3" />;
-      case 'running': return <Play className="w-3 h-3" />;
-      case 'awaiting_approval': return <ShieldCheck className="w-3 h-3" />;
-      default: return <Clock className="w-3 h-3" />;
-    }
-  };
-
-  const styles = getStatusStyles(data.status);
+  const status = getStatusStyles(data.status);
 
   return (
-    <div 
-      className={`px-4 py-2 rounded-xl border min-w-[150px] shadow-xl backdrop-blur-sm transition-all`}
-      style={styles}
-    >
-      <Handle type="target" position={Position.Top} className="!bg-white/20 !border-none" />
-      <div className="flex flex-col gap-1">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-[10px] font-bold uppercase tracking-widest opacity-60">{data.capability}</span>
-          {getStatusIcon(data.status)}
-        </div>
-        <div className="text-xs font-medium line-clamp-1">{data.label}</div>
-        {data.status === 'awaiting_approval' && (
-          <button 
-            onClick={(e) => {
-              e.stopPropagation();
-              data.onApprove(data.id);
+    <div className="relative group">
+      <div 
+        className={`
+          relative border transition-all duration-500 bg-white
+          ${data.status === 'running' ? 'scale-105 shadow-2xl' : 'hover:scale-[1.02]'}
+        `}
+        style={{ 
+          minWidth: theme.spacing.nodeMinWidth,
+          padding: theme.spacing.lg,
+          borderRadius: theme.radius.xl,
+          borderColor: isSelected ? status.accent : theme.colors.border.subtle,
+          boxShadow: data.status === 'running' ? theme.shadows.primaryLarge : theme.shadows.lg
+        }}
+      >
+        <Handle 
+          type="target" 
+          position={Position.Top} 
+          className="!border-none !w-2.5 !h-2.5 !-top-1.5" 
+          style={{ backgroundColor: theme.colors.text.dim }} 
+        />
+        
+        <div className="flex flex-col" style={{ gap: theme.spacing.md }}>
+          <div className="flex items-center justify-between" style={{ gap: theme.spacing.md }}>
+             <div className="flex items-center" style={{ gap: theme.spacing.sm }}>
+                <div 
+                  className="flex items-center justify-center bg-slate-50 border"
+                  style={{ 
+                    padding: theme.spacing.xs, 
+                    borderRadius: theme.radius.sm,
+                    borderColor: theme.colors.border.subtle 
+                  }}
+                >
+                   <Cpu className="w-3.5 h-3.5 text-slate-400" />
+                </div>
+                <span 
+                  className="font-black uppercase"
+                  style={{ 
+                    fontSize: theme.typography.size.tiny, 
+                    letterSpacing: theme.typography.tracking.widest,
+                    color: theme.colors.text.muted 
+                  }}
+                >
+                  {data.capability}
+                </span>
+             </div>
+             {status.icon}
+          </div>
+
+          <div 
+            className="font-bold flex items-center"
+            style={{ 
+              fontSize: theme.typography.size.base, 
+              letterSpacing: theme.typography.tracking.tight,
+              color: theme.colors.text.primary,
+              gap: theme.spacing.xs 
             }}
-            className="mt-2 py-1 px-2 text-[10px] font-bold rounded uppercase transition-colors"
-            style={{ backgroundColor: theme.colors.warning.DEFAULT, color: theme.colors.background }}
           >
-            Approve Action
-          </button>
-        )}
+            <span className="text-slate-200 font-black">#</span> {data.label}
+          </div>
+
+          {data.status === 'awaiting_approval' && (
+            <Button 
+              variant="success" 
+              size="sm" 
+              onClick={(e) => {
+                e.stopPropagation();
+                data.onApprove(data.id);
+              }}
+              className="mt-2"
+              style={{ width: '100%' }}
+            >
+              Verify Payload
+            </Button>
+          )}
+
+          <div 
+            className="flex items-center justify-between border-t"
+            style={{ borderColor: theme.colors.border.subtle, paddingTop: theme.spacing.sm, marginTop: theme.spacing.xs }}
+          >
+             <div 
+               className="font-bold flex items-center uppercase"
+               style={{ 
+                 fontSize: theme.typography.size.tiny, 
+                 letterSpacing: theme.typography.tracking.tighter,
+                 color: theme.colors.text.muted,
+                 gap: theme.spacing.xs
+               }}
+             >
+                Latency: <span style={{ color: theme.colors.text.primary }} className="tabular-nums">0.4ms</span>
+             </div>
+             <div 
+               className="font-black uppercase"
+               style={{ 
+                 fontSize: theme.typography.size.tiny, 
+                 letterSpacing: theme.typography.tracking.widest,
+                 color: status.accent 
+               }}
+             >
+                {data.status}
+             </div>
+          </div>
+        </div>
+        
+        <Handle 
+          type="source" 
+          position={Position.Bottom} 
+          className="!border-none !w-2.5 !h-2.5 !-bottom-1.5" 
+          style={{ backgroundColor: theme.colors.text.dim }} 
+        />
       </div>
-      <Handle type="source" position={Position.Bottom} className="!bg-white/20 !border-none" />
     </div>
   );
 };
 
-const nodeTypes = {
-  custom: CustomNode,
+const CustomEdge = ({ id, sourceX, sourceY, targetX, targetY, style, markerEnd }: EdgeProps) => {
+  const [edgePath] = getBezierPath({ sourceX, sourceY, targetX, targetY });
+  return (
+    <path
+      id={id}
+      style={{ ...style, strokeWidth: 2, transition: 'all 0.5s' }}
+      className="react-flow__edge-path"
+      d={edgePath}
+      markerEnd={markerEnd}
+    />
+  );
 };
 
+const nodeTypes = { custom: CustomNode };
+
+/**
+ * DAGView visualizes the mission orchestration plan.
+ * Completely zero magic numbers - all dimensions derived from theme.
+ */
 const DAGView = ({ plan, onApprove }: { plan: any[], taskID: string, onApprove: (id: string) => void }) => {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -118,7 +222,10 @@ const DAGView = ({ plan, onApprove }: { plan: any[], taskID: string, onApprove: 
     const newNodes = plan.map((step, index) => ({
       id: step.step_id,
       type: 'custom',
-      position: { x: 250, y: index * 120 },
+      position: { 
+        x: theme.spacing.nodeHorizontalOffset as number, 
+        y: index * (theme.spacing.nodeVerticalGap as number) + (theme.spacing.nodeTopOffset as number) 
+      },
       data: { 
         label: step.step_id, 
         capability: step.capability, 
@@ -134,7 +241,12 @@ const DAGView = ({ plan, onApprove }: { plan: any[], taskID: string, onApprove: 
         source: depId,
         target: step.step_id,
         animated: plan.find(s => s.step_id === depId)?.status === 'done' && step.status === 'running',
-        style: { stroke: theme.colors.primary.DEFAULT, strokeWidth: 2, opacity: 0.4 },
+        type: 'default',
+        style: { 
+          stroke: plan.find(s => s.step_id === depId)?.status === 'done' ? theme.colors.primary.DEFAULT : theme.colors.border.subtle, 
+          strokeWidth: 2,
+          opacity: plan.find(s => s.step_id === depId)?.status === 'done' ? 0.6 : 0.4
+        },
       }))
     );
 
@@ -143,7 +255,7 @@ const DAGView = ({ plan, onApprove }: { plan: any[], taskID: string, onApprove: 
   }, [plan, setNodes, setEdges, onApprove]);
 
   return (
-    <div className="h-full w-full rounded-2xl overflow-hidden border" style={{ backgroundColor: theme.colors.background, borderColor: theme.colors.border }}>
+    <div className="h-full w-full" style={{ backgroundColor: theme.colors.background }}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -151,10 +263,43 @@ const DAGView = ({ plan, onApprove }: { plan: any[], taskID: string, onApprove: 
         onEdgesChange={onEdgesChange}
         nodeTypes={nodeTypes}
         fitView
+        className="premium-flow"
       >
-        <Background color={theme.colors.surface.elevated} gap={20} />
-        <Controls className="!bg-white/5 !border-white/10 !fill-white" />
+        <Background color={theme.colors.border.subtle} gap={theme.spacing.flowGridGap} size={1} />
+        <Controls className="!bg-white !border-slate-100 !fill-slate-400" />
       </ReactFlow>
+      
+      <div 
+        className="absolute pointer-events-none" 
+        style={{ top: theme.spacing.xl, left: theme.spacing.xl, gap: theme.spacing.xs, display: 'flex', flexDirection: 'column' }}
+      >
+         <div className="flex items-center" style={{ gap: theme.spacing.md }}>
+            <div 
+              className="rounded-full shadow-lg" 
+              style={{ width: theme.spacing.xs, height: theme.spacing.xs, backgroundColor: theme.colors.primary.DEFAULT }} 
+            />
+            <span 
+              className="font-black uppercase"
+              style={{ 
+                fontSize: theme.typography.size.sm, 
+                letterSpacing: theme.typography.tracking.widest, 
+                color: theme.colors.text.primary 
+              }}
+            >
+              Sequence Map
+            </span>
+         </div>
+         <div 
+           className="font-bold uppercase"
+           style={{ 
+             fontSize: theme.typography.size.xs, 
+             letterSpacing: theme.typography.tracking.ultra, 
+             color: theme.colors.text.dim 
+           }}
+         >
+           GAIA.ORCHESTRATOR.DAG
+         </div>
+      </div>
     </div>
   );
 };

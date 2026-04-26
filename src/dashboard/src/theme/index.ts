@@ -17,6 +17,7 @@
 import { colors } from './colors';
 import { spacing } from './spacing';
 import { typography } from './typography';
+import { shadows } from './shadows';
 
 /**
  * theme is the unified design system object used by all dashboard components.
@@ -25,21 +26,17 @@ export const theme = {
   colors,
   spacing,
   typography,
-  radius: {
-    xs: '0.25rem',
-    sm: '0.5rem',
-    md: '0.75rem',
-    lg: '1rem',
-    xl: '1.25rem',
-    '2xl': '1.5rem',
-    full: '9999px',
-  },
-  shadows: {
-    glow: `0 0 20px -5px ${colors.primary.glow}`,
-    success: `0 0 15px -3px ${colors.success.glow}`,
+  shadows,
+  radius: spacing.borderRadius,
+  strokeWidth: {
+    thin: 1,
+    base: 2,
+    bold: 2.5,
+    heavy: 3,
   }
 };
 
 export * from './colors';
 export * from './spacing';
 export * from './typography';
+export * from './shadows';

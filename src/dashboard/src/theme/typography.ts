@@ -12,43 +12,44 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// src/theme/typography.ts
-
 /**
- * typography defines font families, weights, and sizing scales for the GAIA dashboard.
+ * typography defines the font scale, weights, and tracking for the dashboard.
  */
 export const typography = {
-  fonts: {
-    primary: "'Inter', system-ui, -apple-system, sans-serif",
-    mono: "'Fira Code', 'JetBrains Mono', monospace",
+  size: {
+    tiny: '9px',
+    xs: '10px',
+    sm: '11px',
+    base: '13px',
+    md: '14px',
+    lg: '16px',
+    xl: '20px',
+    '2xl': '24px',
+    '3xl': '32px',
+    '4xl': '48px',
   },
-  
-  sizes: {
-    xs: '0.75rem',    // 12px
-    sm: '0.875rem',   // 14px
-    base: '1rem',     // 16px
-    lg: '1.125rem',   // 18px
-    xl: '1.25rem',    // 20px
-    '2xl': '1.5rem',  // 24px
-    '3xl': '1.875rem',// 30px
+  weight: {
+    light: 300,
+    normal: 400,
+    medium: 500,
+    semibold: 600,
+    bold: 700,
+    black: 900,
   },
-  
-  weights: {
-    light: '300',
-    normal: '400',
-    medium: '500',
-    semibold: '600',
-    bold: '700',
-    black: '900',
-  },
-  
-  letterSpacing: {
+  tracking: {
+    tight: '-0.02em',
     tighter: '-0.05em',
-    tight: '-0.025em',
-    normal: '0',
-    wide: '0.025em',
-    wider: '0.05em',
-    widest: '0.1em',
-    extreme: '0.2em',
+    wide: '0.05em',
+    wider: '0.1em',
+    widest: '0.2em',
+    ultra: '0.4em',
+  },
+  lineHeight: {
+    none: 1,
+    tight: 1.25,
+    snug: 1.375,
+    normal: 1.5,
+    relaxed: 1.625,
+    loose: 2,
   }
 };

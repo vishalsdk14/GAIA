@@ -21,6 +21,8 @@ yarn-debug.log*
 yarn-error.log*
 .npm
 .env
+.cache/
+.turbo/
 
 # Python
 **/__pycache__/
@@ -58,3 +60,10 @@ Thumbs.db
 .settings/
 .classpath
 src/kernel/data/
+coverage/
+
+# Next.js specific (Root level)
+.next/
+out/
+build/
+.vercel
