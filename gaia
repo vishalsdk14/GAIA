@@ -26,9 +26,11 @@ case "$1" in
             echo "Error: Goal is required."
             exit 1
         fi
+        # Safely encode the goal into JSON to handle quotes and special characters
+        PAYLOAD=$(python3 -c "import json, sys; print(json.dumps({'goal': sys.argv[1]}))" "$2")
         curl -s -X POST "$KERNEL_URL/api/v1/tasks" \
              -H "Content-Type: application/json" \
-             -d "{\"goal\": \"$2\"}" | python3 -m json.tool
+             -d "$PAYLOAD" | python3 -m json.tool
         ;;
     status)
         if [ -z "$2" ]; then
