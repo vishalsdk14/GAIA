@@ -1,36 +1,82 @@
 <div align="center">
-
-# GAIA
-
-### The Orchestration Kernel for Autonomous Agents
+  <img src="https://raw.githubusercontent.com/vishalsdk14/GAIA/main/docs/assets/logo.png" width="120" height="120" alt="GAIA Logo" />
+  <h1>GAIA</h1>
+  <p><b>The Runtime for Building Reliable AI Agent Systems.</b></p>
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Status: Implementation Phase](https://img.shields.io/badge/Status-Implementation%20Phase-green.svg)](#current-status)
+[![Status: Production Ready](https://img.shields.io/badge/Status-Phase%2011%20Complete-green.svg)](#roadmap)
 [![Protocol: A2A](https://img.shields.io/badge/Protocol-Google%20A2A-4285F4.svg)](https://github.com/google/A2A)
 [![Protocol: MCP](https://img.shields.io/badge/Protocol-Anthropic%20MCP-D97706.svg)](https://modelcontextprotocol.io/)
 
-**GAIA is a deterministic execution kernel that turns a probabilistic planner and a swarm of untrusted, plug-in agents into a reliable, goal-completing system.**
+---
 
-[Design Spec](docs/design.md) · [Kernel Internals](docs/site/docs/internals/index.md) · [Contributing](CONTRIBUTING.md)
+### GAIA is to AI Agents what an OS Kernel is to Processes.
+
+It provides the stable ground, safety boundaries, and execution reliability that LLMs lack natively.
+
+[Quickstart](#-quickstart) · [Examples](#-minimal-example) · [Use Cases](#-use-cases) · [Design Spec](docs/design.md)
 
 </div>
 
 ---
 
-## The Problem
+## ⚡ What GAIA Lets You Do
 
-AI agents today are powerful but **fragile**. They work in demos but fail in production because:
-
-* **No recovery**: One API timeout at Step 10 of 50 loses all progress.
-* **No security**: Agents get unlimited access to tools, data, and each other.
-* **No interoperability**: OpenAI, Anthropic, and Google agents can't work together.
-* **No separation of concerns**: The same LLM that plans also executes — and it forgets Step 34.
-
-Every team building "AI agents" is independently solving the same infrastructure problems. GAIA solves them once, at the kernel level.
+*   **Build Resilient Swarms**: Automatically recover from agent timeouts or failures with a 4-tier escalation path (Retry → Fallback → Replan → Abort).
+*   **Run Untrusted Agents Safely**: Execute agents in isolated sandboxes with a "Deny-by-Default" policy firewall. No shared state chaos.
+*   **Connect Anything**: Seamlessly orchestrate OpenAI, Anthropic, and Google agents in a single unified pipeline via A2A and MCP protocols.
+*   **Debug with Precision**: Every action is cryptographically signed and tracked in a tamper-proof audit log.
 
 ---
 
-## Why GAIA? (vs. Existing Frameworks)
+## 🚀 Quickstart
+
+Get the GAIA Kernel running in less than 60 seconds.
+
+### 1. Start the Kernel
+```bash
+# Clone the repository
+git clone https://github.com/vishalsdk14/GAIA.git && cd GAIA
+
+# Start the kernel (requires Go 1.22+)
+cd src/kernel && go run main.go
+```
+
+### 2. Submit Your First Goal
+Open a new terminal and use the unified CLI to talk to the kernel:
+```bash
+./gaia submit "Research the impact of Llama 3 on the agentic ecosystem and save a summary to state."
+```
+
+---
+
+## 💻 Minimal Example (TypeScript SDK)
+
+```typescript
+import { GaiaClient } from '@gaia/sdk';
+
+const client = new GaiaClient('http://localhost:8080');
+
+// Submit a goal and stream the execution DAG in real-time
+const task = await client.tasks.submit("Summarize the GAIA technical specs");
+
+client.tasks.subscribe(task.id, (event) => {
+  console.log(`[${event.type}] - ${event.payload.message}`);
+});
+```
+
+---
+
+## 📂 Use Cases
+
+*   **Autonomous Research Pipelines**: Multi-step workflows that require reliable tool usage and long-running execution.
+*   **Resilient Task Automation**: Enterprise workflows where an API failure at Step 50 shouldn't lose 2 hours of work.
+*   **Multi-Agent Coordination**: Orchestrating specialized agents (Coding, Writing, Searching) across different LLM providers.
+*   **Secure Plugin Marketplaces**: Running third-party agent capabilities without giving them full access to your environment.
+
+---
+
+## ⚖️ Why GAIA? (vs. Frameworks)
 
 | Concern | LangGraph | CrewAI | AutoGen | GAIA |
 | :--- | :---: | :---: | :---: | :---: |
@@ -46,6 +92,8 @@ Every team building "AI agents" is independently solving the same infrastructure
 **GAIA is not a framework. It is a kernel.** Frameworks help you wire agents together. GAIA *is* the infrastructure that manages, secures, and orchestrates them.
 
 ---
+
+## 🏗 Architecture & Principles
 
 ## Architecture
 
