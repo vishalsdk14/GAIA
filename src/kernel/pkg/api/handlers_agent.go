@@ -210,3 +210,20 @@ func (s *Server) handleDeregister(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// handleHeartbeat processes a periodic availability signal from a connected agent.
+// It updates the agent's registration record in the Capability Registry.
+func (s *Server) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
+	agentID := chi.URLParam(r, "agentID")
+	if agentID == "" {
+		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "agentID is required"})
+		return
+	}
+
+	if err := s.registry.Heartbeat(agentID); err != nil {
+		jsonResponse(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		return
+	}
+
+	jsonResponse(w, http.StatusOK, map[string]string{"status": "alive"})
+}

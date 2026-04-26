@@ -134,3 +134,26 @@ func (r *InMemoryRegistry) UpdateHealth(agentID string, success bool, latencyMS 
 
 	return nil
 }
+
+// Heartbeat refreshes the agent's 'LastHealthCheck' timestamp and maintains its status.
+// This is used for Phase 11 availability tracking to prevent agents from being
+// marked as 'Zombie' or 'Disconnected' during periods of inactivity.
+func (r *InMemoryRegistry) Heartbeat(agentID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	record, exists := r.agents[agentID]
+	if !exists {
+		return fmt.Errorf("registry: agent %s not found", agentID)
+	}
+
+	record.LastHealthCheck = time.Now().UTC()
+	
+	// If the agent was degraded due to a timeout but is now heartbeating,
+	// we keep it as Active to ensure it stays in the pool.
+	if record.Status == types.AgentStatusDegraded && record.TrustScore > 0.85 {
+		record.Status = types.AgentStatusActive
+	}
+
+	return nil
+}

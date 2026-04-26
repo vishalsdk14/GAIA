@@ -30,6 +30,7 @@ type CapabilityRegistry interface {
 	Register(manifest *types.AgentManifest) error
 	Deregister(agentID string) error
 	UpdateHealth(agentID string, success bool, latencyMS int) error
+	Heartbeat(agentID string) error
 	SelectAgent(capability string) (*types.AgentRecord, error)
 	ListAgents() []*types.AgentRecord
 	ListCapabilities() []string

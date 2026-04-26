@@ -79,6 +79,7 @@ func (s *Server) setupRoutes() {
 		r.Get("/registry/agents", s.handleListAgents)
 		r.Get("/registry/capabilities", s.handleListCapabilities)
 		r.Post("/registry/register", s.handleRegister)
+		r.Post("/registry/heartbeat/{agentID}", s.handleHeartbeat)
 		r.Delete("/registry/agents/{agentID}", s.handleDeregister)
 
 		// Real-time Streaming
