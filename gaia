@@ -1,0 +1,49 @@
+#!/bin/bash
+
+# GAIA Unified CLI Entry Point
+# This script routes commands to the appropriate kernel or agent tools.
+
+KERNEL_URL=${GAIA_KERNEL_URL:-"http://localhost:8080"}
+
+function usage() {
+    echo "GAIA CLI - The OS for AI Agents"
+    echo ""
+    echo "Usage: ./gaia [command] [args]"
+    echo ""
+    echo "Commands:"
+    echo "  submit <goal>    Submit a new high-level goal to the Kernel"
+    echo "  status <task_id> Get the current status and plan of a task"
+    echo "  list-agents      List all currently registered agents"
+    echo "  list-caps        List all available agent capabilities"
+    echo ""
+    echo "Environment Variables:"
+    echo "  GAIA_KERNEL_URL  Default: http://localhost:8080"
+}
+
+case "$1" in
+    submit)
+        if [ -z "$2" ]; then
+            echo "Error: Goal is required."
+            exit 1
+        fi
+        curl -s -X POST "$KERNEL_URL/api/v1/tasks" \
+             -H "Content-Type: application/json" \
+             -d "{\"goal\": \"$2\"}" | python3 -m json.tool
+        ;;
+    status)
+        if [ -z "$2" ]; then
+            echo "Error: Task ID is required."
+            exit 1
+        fi
+        curl -s "$KERNEL_URL/api/v1/tasks/$2" | python3 -m json.tool
+        ;;
+    list-agents)
+        curl -s "$KERNEL_URL/api/v1/registry/agents" | python3 -m json.tool
+        ;;
+    list-caps)
+        curl -s "$KERNEL_URL/api/v1/registry/capabilities" | python3 -m json.tool
+        ;;
+    *)
+        usage
+        ;;
+esac
