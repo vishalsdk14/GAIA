@@ -29,10 +29,9 @@ import (
 
 func main() {
 	// Load environment variables from .env file (Phase 11: Developer Experience)
-	if err := godotenv.Load(); err != nil {
-		// We don't fatal here because .env is optional in production (env vars take precedence)
-		log.Println("Note: No .env file found, using system environment variables.")
-	}
+	// Try loading from current dir, then root fallback for monorepo
+	_ = godotenv.Load()           // Current dir
+	_ = godotenv.Load("../../.env") // Root fallback
 
 	// Initialize default configuration
 	config := core.DefaultConfig()
