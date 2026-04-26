@@ -27,7 +27,7 @@ export class GaiaAgent {
   constructor(manifest: AgentManifest, kernelURL: string = 'http://localhost:8080') {
     this.manifest = manifest;
     this.kernelURL = kernelURL;
-    this.gaia = new GaiaClient(kernelURL);
+    this.gaia = new GaiaClient({ baseURL: kernelURL });
     this.stateClient = axios.create({
       baseURL: kernelURL,
       headers: {

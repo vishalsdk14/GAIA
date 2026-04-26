@@ -38,9 +38,19 @@ Get the GAIA Kernel running in less than 60 seconds.
 # Clone the repository
 git clone https://github.com/vishalsdk14/GAIA.git && cd GAIA
 
+# Create a .env file with your LLM configuration (Local or Cloud)
+cat <<EOF > src/kernel/.env
+GAIA_AUDIT_SECRET=$(openssl rand -hex 32)
+GAIA_PLANNER_PROVIDER="local"
+GAIA_PLANNER_MODEL="llama3"
+EOF
+
 # Start the kernel (requires Go 1.22+)
 cd src/kernel && go run main.go
 ```
+
+> [!TIP]
+> To use OpenAI, set `GAIA_PLANNER_PROVIDER="cloud"`, `GAIA_PLANNER_MODEL="gpt-4-turbo"`, and provide your `GAIA_PLANNER_API_KEY`.
 
 ### 2. Submit Your First Goal
 Open a new terminal and use the unified CLI to talk to the kernel:
