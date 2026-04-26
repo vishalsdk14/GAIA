@@ -23,6 +23,7 @@ import (
 	"gaia/kernel/pkg/state"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -62,7 +63,24 @@ func NewServer(o *core.Orchestrator, r registry.CapabilityRegistry, as *state.SQ
 func (s *Server) setupMiddleware() {
 	s.router.Use(middleware.RequestID)
 	s.router.Use(middleware.RealIP)
-	s.router.Use(middleware.Logger)
+	
+	// Wrap the standard logger to suppress noisy heartbeat requests unless DEBUG is active
+	s.router.Use(func(next http.Handler) http.Handler {
+		logMiddleware := middleware.Logger(next)
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			isHeartbeat := strings.Contains(r.URL.Path, "/heartbeat/")
+			logLevel := s.orchestrator.Config().LogLevel
+			
+			if isHeartbeat && strings.ToUpper(logLevel) != "DEBUG" {
+				// Skip logging for heartbeats in non-DEBUG modes
+				next.ServeHTTP(w, r)
+			} else {
+				// Log all other requests (or heartbeats if in DEBUG mode)
+				logMiddleware.ServeHTTP(w, r)
+			}
+		})
+	})
+
 	s.router.Use(middleware.Recoverer)
 	s.router.Use(middleware.Timeout(60 * time.Second))
 }
