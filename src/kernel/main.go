@@ -20,6 +20,7 @@ import (
 	"gaia/kernel/pkg/logger"
 	"gaia/kernel/pkg/registry"
 	"gaia/kernel/pkg/state"
+	"github.com/joho/godotenv"
 	"log"
 	"net/http"
 	_ "net/http/pprof"
@@ -27,6 +28,12 @@ import (
 )
 
 func main() {
+	// Load environment variables from .env file (Phase 11: Developer Experience)
+	if err := godotenv.Load(); err != nil {
+		// We don't fatal here because .env is optional in production (env vars take precedence)
+		log.Println("Note: No .env file found, using system environment variables.")
+	}
+
 	// Initialize default configuration
 	config := core.DefaultConfig()
 
