@@ -463,6 +463,14 @@ func (c *Coordinator) handleStepFailure(step *types.Step, err *types.Error, agen
 		agentID = agent.AgentID
 	}
 
+	// Safety check: if err is nil (malformed agent response), create a generic one
+	if err == nil {
+		err = &types.Error{
+			Code:    types.ErrorCodeExecutionFailed,
+			Message: "Agent returned failure without specific error details",
+		}
+	}
+
 	c.log.Warn("Handling step failure", "step_id", step.StepID, "error_code", err.Code, "retry_count", step.RetryCount, "agent_id", agentID)
 
 	// Tier 1: Retry (if retryable and attempts < max)
