@@ -63,7 +63,7 @@ func (p *LocalLLMPlanner) GeneratePlan(goal string, state map[string]interface{}
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{Timeout: 60 * time.Second}
+	client := &http.Client{Timeout: 300 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		slog.Error("Ollama connection failed", "error", err)
