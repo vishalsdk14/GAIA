@@ -69,12 +69,16 @@ func (p *LocalLLMPlanner) GeneratePlan(goal string, state map[string]interface{}
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{Timeout: 300 * time.Second}
+	slog.Info("Intelligence: Local LLM Request", "model", p.Model, "goal", goal)
+	start := time.Now()
+	
 	resp, err := client.Do(req)
 	if err != nil {
 		slog.Error("Local LLM connection failed", "error", err)
 		return nil, fmt.Errorf("core: %w: local llm request failed: %v", fmt.Errorf(string(types.ErrorCodeInternalError)), err)
 	}
 	defer resp.Body.Close()
+	duration := time.Since(start)
 
 	if resp.StatusCode != http.StatusOK {
 		slog.Warn("Local LLM returned non-200", "status", resp.StatusCode)
@@ -82,13 +86,30 @@ func (p *LocalLLMPlanner) GeneratePlan(goal string, state map[string]interface{}
 	}
 
 	var ollamaResp struct {
-		Response string `json:"response"`
+		Response        string `json:"response"`
+		PromptEvalCount int    `json:"prompt_eval_count"`
+		EvalCount       int    `json:"eval_count"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&ollamaResp); err != nil {
 		return nil, fmt.Errorf("core: failed to decode ollama response: %w", err)
 	}
 
-	return parsePlanJSON(ollamaResp.Response)
+	record, err := parsePlanJSON(ollamaResp.Response)
+	if err != nil {
+		return nil, err
+	}
+	record.Usage = types.UsageMetrics{
+		PromptTokens:     ollamaResp.PromptEvalCount,
+		CompletionTokens: ollamaResp.EvalCount,
+		TotalTokens:      ollamaResp.PromptEvalCount + ollamaResp.EvalCount,
+	}
+	
+	slog.Info("Intelligence: Local LLM Response", 
+		"model", p.Model, 
+		"tokens", record.Usage.TotalTokens, 
+		"duration_ms", duration.Milliseconds())
+	
+	return record, nil
 }
 
 func (p *LocalLLMPlanner) Complete(prompt string) (string, error) {
@@ -167,14 +188,20 @@ func (p *CloudLLMPlanner) GeneratePlan(goal string, state map[string]interface{}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+p.APIKey)
 
+	slog.Info("Intelligence: Cloud LLM Request", "model", p.Model, "goal", goal)
+	start := time.Now()
+	
 	client := &http.Client{Timeout: 60 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
+		slog.Error("Cloud LLM connection failed", "error", err)
 		return nil, fmt.Errorf("core: %w: cloud llm request failed: %v", fmt.Errorf(string(types.ErrorCodeInternalError)), err)
 	}
 	defer resp.Body.Close()
+	duration := time.Since(start)
 
 	if resp.StatusCode != http.StatusOK {
+		slog.Warn("Cloud LLM returned non-200", "status", resp.StatusCode, "model", p.Model)
 		return nil, fmt.Errorf("core: cloud llm returned status %d", resp.StatusCode)
 	}
 
@@ -184,6 +211,7 @@ func (p *CloudLLMPlanner) GeneratePlan(goal string, state map[string]interface{}
 				Content string `json:"content"`
 			} `json:"message"`
 		} `json:"choices"`
+		Usage types.UsageMetrics `json:"usage"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&openaiResp); err != nil {
 		return nil, fmt.Errorf("core: failed to decode cloud llm response: %w", err)
@@ -193,7 +221,18 @@ func (p *CloudLLMPlanner) GeneratePlan(goal string, state map[string]interface{}
 		return nil, fmt.Errorf("core: cloud llm returned zero choices")
 	}
 
-	return parsePlanJSON(openaiResp.Choices[0].Message.Content)
+	record, err := parsePlanJSON(openaiResp.Choices[0].Message.Content)
+	if err != nil {
+		return nil, err
+	}
+	record.Usage = openaiResp.Usage
+	
+	slog.Info("Intelligence: Cloud LLM Response", 
+		"model", p.Model, 
+		"tokens", record.Usage.TotalTokens, 
+		"duration_ms", duration.Milliseconds())
+	
+	return record, nil
 }
 
 func (p *CloudLLMPlanner) Complete(prompt string) (string, error) {
@@ -243,7 +282,8 @@ func (p *CloudLLMPlanner) Vision(prompt string, imageBase64 string) (string, err
 					map[string]interface{}{
 						"type": "image_url",
 						"image_url": map[string]string{
-							"url": fmt.Sprintf("data:image/jpeg;base64,%s", imageBase64),
+							"url":    fmt.Sprintf("data:image/jpeg;base64,%s", imageBase64),
+							"detail": "low", // BUG-002: Force low detail to save ~90% of vision tokens
 						},
 					},
 				},

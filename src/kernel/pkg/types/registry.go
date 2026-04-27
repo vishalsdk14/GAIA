@@ -79,13 +79,21 @@ const (
 	PlanStatusReplanning PlanStatus = "replanning"
 )
 
+// UsageMetrics tracks resource consumption for an LLM interaction.
+type UsageMetrics struct {
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
+	TotalTokens      int `json:"total_tokens"`
+}
+
 // PlanRecord is the internal tracking object for a plan segment.
 type PlanRecord struct {
-	PlanID     string     `json:"plan_id"`
-	TaskID     string     `json:"task_id"`
-	Status     PlanStatus `json:"status"`
-	Steps      []Step     `json:"steps"`
-	HasMore    bool       `json:"has_more"`
-	Generation int        `json:"generation"`
-	CreatedAt  time.Time  `json:"created_at"`
+	PlanID     string       `json:"plan_id"`
+	TaskID     string       `json:"task_id"`
+	Status     PlanStatus   `json:"status"`
+	Steps      []Step       `json:"steps"`
+	HasMore    bool         `json:"has_more"`
+	Generation int          `json:"generation"`
+	Usage      UsageMetrics `json:"usage,omitempty"` // Captured from LLM response (BUG-002)
+	CreatedAt  time.Time    `json:"created_at"`
 }

@@ -110,6 +110,15 @@ func (c *Coordinator) Run() error {
 
 		// Check for termination after DAG iteration
 		if c.isTerminal() {
+			// Phase 18: [TELEMETRY] Final Mission Summary
+			c.log.Info("MISSION_SUMMARY",
+				"status", c.task.Status,
+				"total_steps", c.task.TotalSteps,
+				"tokens_prompt", c.task.TokensPrompt,
+				"tokens_completion", c.task.TokensCompletion,
+				"estimated_cost_usd", c.task.EstimatedCostUSD,
+				"duration_ms", time.Since(c.task.CreatedAt).Milliseconds(),
+				"agents", c.task.AgentsInvolved)
 			return nil
 		}
 
@@ -226,6 +235,22 @@ func (c *Coordinator) phase2Planning() error {
 		}
 
 		plan, err := c.planner.GeneratePlan(goal, activeState, capabilities)
+		
+		// Phase 18: [TELEMETRY] Update Planning Metrics
+		if plan != nil {
+			c.task.TokensPrompt += plan.Usage.PromptTokens
+			c.task.TokensCompletion += plan.Usage.CompletionTokens
+			
+			// Calculate and aggregate cost (BUG-002)
+			cost := CalculateCost(c.config.PlannerModel, plan.Usage)
+			c.task.EstimatedCostUSD += cost
+
+			c.log.Debug("Telemetry: Planning metrics updated", 
+				"prompt", plan.Usage.PromptTokens, 
+				"completion", plan.Usage.CompletionTokens,
+				"cost_usd", cost)
+		}
+
 		if err != nil {
 			lastErr = err
 			
@@ -318,6 +343,7 @@ func (c *Coordinator) failTask(err error) error {
 	
 	c.task.Status = types.TaskStatusFailed
 	c.task.UpdatedAt = time.Now().UTC()
+	c.task.TotalDurationMS = time.Since(c.task.CreatedAt).Milliseconds()
 	
 	c.log.Error("Task failed", "error", err)
 	c.events.Emit(common.Event{
@@ -381,10 +407,10 @@ func (c *Coordinator) executeDAG() error {
 			}
 
 			// Loop Termination (Success)
-			// Only mark as completed if all steps are Done and no failures exist in the plan.
 			c.task.Status = types.TaskStatusCompleted
 			now := time.Now().UTC()
 			c.task.FinishedAt = &now
+			c.task.TotalDurationMS = time.Since(c.task.CreatedAt).Milliseconds()
 			c.mu.Unlock()
 			c.log.Info("Task completed successfully")
 			c.events.Emit(common.Event{Type: types.EventTaskCompleted, TaskID: c.task.TaskID})
@@ -440,6 +466,7 @@ func (c *Coordinator) executeDAG() error {
 		if err := c.quota.IncrementStep(c.task.TaskID); err != nil {
 			return c.failTask(err)
 		}
+		c.task.TotalSteps++
 
 		// Transition to Running synchronously to prevent race condition in GetReadySteps
 		c.mu.Lock()
@@ -557,7 +584,25 @@ func (c *Coordinator) executeDAG() error {
 			c.events.Emit(common.Event{Type: types.EventStepStarted, TaskID: c.task.TaskID, StepID: step.StepID})
 			c.audit.Log("kernel", string(types.EventStepStarted), step.StepID, map[string]interface{}{"agent": agentManifest.AgentID, "task_id": c.task.TaskID})
 
+			// Phase 18: [TELEMETRY] Start Step Timer
+			start := time.Now()
 			resp, err := c.transport.Dispatch(req, agentManifest)
+			step.DurationMS = time.Since(start).Milliseconds()
+
+			// Track involved agents (unique list)
+			c.mu.Lock()
+			found := false
+			for _, a := range c.task.AgentsInvolved {
+				if a == agentManifest.AgentID {
+					found = true
+					break
+				}
+			}
+			if !found {
+				c.task.AgentsInvolved = append(c.task.AgentsInvolved, agentManifest.AgentID)
+			}
+			c.mu.Unlock()
+
 			if err != nil {
 				c.log.Error("Step dispatch failed", "step_id", step.StepID, "error", err)
 				c.handleStepFailure(step, &types.Error{Code: types.ErrorCodeAgentUnavailable, Message: err.Error()}, agentManifest)

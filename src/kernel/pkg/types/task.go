@@ -39,6 +39,15 @@ type Task struct {
 	HasMore     bool                   `json:"has_more"`
 	CurrentStep int                    `json:"current_step"`
 	Metadata    map[string]interface{} `json:"metadata,omitempty"`
+	
+	// Telemetry (BUG-002)
+	TotalSteps       int      `json:"total_steps"`
+	TokensPrompt     int      `json:"tokens_prompt"`
+	TokensCompletion int      `json:"tokens_completion"`
+	TotalDurationMS  int64    `json:"total_duration_ms"`
+	EstimatedCostUSD float64  `json:"estimated_cost_usd"`
+	AgentsInvolved   []string `json:"agents_involved,omitempty"`
+
 	CreatedAt   time.Time              `json:"created_at"`
 	UpdatedAt   time.Time              `json:"updated_at"`
 	FinishedAt *time.Time              `json:"finished_at,omitempty"`
@@ -70,4 +79,5 @@ type Step struct {
 	OutputSchema   map[string]interface{} `json:"output_schema,omitempty"`
 	Error          *Error                 `json:"error,omitempty"`
 	RetryCount     int                    `json:"retry_count"`
+	DurationMS     int64                  `json:"duration_ms"`
 }
