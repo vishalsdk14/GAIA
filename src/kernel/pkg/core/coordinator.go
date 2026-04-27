@@ -364,8 +364,18 @@ func (c *Coordinator) executeDAG() error {
 		// Phase 6.0: Early Agent Selection for Throttling
 		agentRecord, err := c.registry.SelectAgent(sPtr.Capability)
 		if err != nil {
-			c.log.Warn("No agent available for ready step", "step_id", sPtr.StepID, "capability", sPtr.Capability)
-			continue
+			c.log.Error("No agent available for required capability", "step_id", sPtr.StepID, "capability", sPtr.Capability, "error", err)
+			
+			// Phase 12: Fail gracefully instead of looping infinitely
+			sPtr.Status = types.StepStatusFailed
+			sPtr.Error = fmt.Sprintf("no agent registered for capability: %s", sPtr.Capability)
+			c.task.Status = types.TaskStatusFailed
+			c.task.Error = sPtr.Error
+			
+			if err := c.taskStore.SaveTask(c.task); err != nil {
+				c.log.Error("Failed to save task failure state", "error", err)
+			}
+			return fmt.Errorf("task failed: %s", sPtr.Error) // Terminate the execution loop
 		}
 		targetAgent := agentRecord.Manifest.AgentID
 
