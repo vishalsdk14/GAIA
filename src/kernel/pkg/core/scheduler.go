@@ -28,7 +28,6 @@ import (
 // and automatically adds the referenced step IDs to the 'DependsOn' slice if they
 // are part of the current plan. This prevents race conditions caused by LLM forgetfulness.
 func AddImplicitDependencies(plan []types.Step) {
-	// 1. Create a map of all step IDs in the current plan for O(1) existence checking
 	currentPlanIDs := make(map[string]bool)
 	for _, s := range plan {
 		currentPlanIDs[s.StepID] = true
@@ -37,17 +36,28 @@ func AddImplicitDependencies(plan []types.Step) {
 	for i := range plan {
 		step := &plan[i]
 		
-		// Marshal input to scan for tags
+		// Marshal input to scan for tags in the raw JSON
 		bytes, _ := json.Marshal(step.Input)
-		matches := interpolationRegex.FindAllStringSubmatch(string(bytes), -1)
+		inputStr := string(bytes)
 		
+		// Use a permissive regex to catch all potential tags
+		matches := interpolationRegex.FindAllStringSubmatch(inputStr, -1)
 		for _, match := range matches {
 			if len(match) < 2 { continue }
-			keyPath := strings.TrimSpace(match[1])
-			parts := strings.Split(keyPath, ".")
-			if len(parts) == 0 { continue }
 			
-			referencedID := parts[0]
+			content := strings.TrimSpace(match[1])
+			
+			// Extract root ID: split by any non-alphanumeric/underscore char
+			var referencedID string
+			firstSeparator := strings.IndexFunc(content, func(r rune) bool {
+				return !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-')
+			})
+			
+			if firstSeparator == -1 {
+				referencedID = content
+			} else {
+				referencedID = content[:firstSeparator]
+			}
 			
 			// If this ID is in the current plan, it must be a dependency
 			if currentPlanIDs[referencedID] && referencedID != step.StepID {
@@ -59,6 +69,7 @@ func AddImplicitDependencies(plan []types.Step) {
 					}
 				}
 				if !alreadyPresent {
+					fmt.Printf("[KERNEL] DAG: Adding implicit dependency: %s -> %s\n", step.StepID, referencedID)
 					step.DependsOn = append(step.DependsOn, referencedID)
 				}
 			}
