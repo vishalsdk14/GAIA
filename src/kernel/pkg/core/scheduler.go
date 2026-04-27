@@ -24,59 +24,6 @@ import (
 	"gaia/kernel/pkg/types"
 )
 
-// AddImplicitDependencies scans each step for interpolation tags (e.g., {{step_1...}})
-// and automatically adds the referenced step IDs to the 'DependsOn' slice if they
-// are part of the current plan. This prevents race conditions caused by LLM forgetfulness.
-func AddImplicitDependencies(plan []types.Step) {
-	currentPlanIDs := make(map[string]bool)
-	for _, s := range plan {
-		currentPlanIDs[s.StepID] = true
-	}
-
-	for i := range plan {
-		step := &plan[i]
-		
-		// Marshal input to scan for tags in the raw JSON
-		bytes, _ := json.Marshal(step.Input)
-		inputStr := string(bytes)
-		
-		// Use a permissive regex to catch all potential tags
-		matches := interpolationRegex.FindAllStringSubmatch(inputStr, -1)
-		for _, match := range matches {
-			if len(match) < 2 { continue }
-			
-			content := strings.TrimSpace(match[1])
-			
-			// Extract root ID: split by any non-alphanumeric/underscore char
-			var referencedID string
-			firstSeparator := strings.IndexFunc(content, func(r rune) bool {
-				return !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-')
-			})
-			
-			if firstSeparator == -1 {
-				referencedID = content
-			} else {
-				referencedID = content[:firstSeparator]
-			}
-			
-			// If this ID is in the current plan, it must be a dependency
-			if currentPlanIDs[referencedID] && referencedID != step.StepID {
-				alreadyPresent := false
-				for _, d := range step.DependsOn {
-					if d == referencedID {
-						alreadyPresent = true
-						break
-					}
-				}
-				if !alreadyPresent {
-					fmt.Printf("[KERNEL] DAG: Adding implicit dependency: %s -> %s\n", step.StepID, referencedID)
-					step.DependsOn = append(step.DependsOn, referencedID)
-				}
-			}
-		}
-	}
-}
-
 // GetReadySteps implements Phase 3: DAG Resolution.
 // It scans the plan and returns all steps that are pending and whose dependencies are fulfilled.
 // A dependency is fulfilled if it is either 'done' in the current plan OR exists in the historical state.
@@ -101,10 +48,20 @@ func GetReadySteps(plan []types.Step, history map[string]interface{}) []*types.S
 		// Check if all dependencies are "done" or in history
 		allDepsMet := true
 		for _, depID := range step.DependsOn {
-			_, inHistory := history[depID]
-			if statusMap[depID] != types.StepStatusDone && !inHistory {
-				allDepsMet = false
-				break
+			// Phase 15: [ROOT CAUSE FIX] Isolation of Current Plan vs History
+			// If the dependency ID exists in the current plan, we MUST wait for it to be 'Done'.
+			// We only fall back to checking history if the dependency is NOT in the current plan.
+			if status, inCurrentPlan := statusMap[depID]; inCurrentPlan {
+				if status != types.StepStatusDone {
+					allDepsMet = false
+					break
+				}
+			} else {
+				// Dependency is not in the current plan, so it must exist in history.
+				if _, inHistory := history[depID]; !inHistory {
+					allDepsMet = false
+					break
+				}
 			}
 		}
 

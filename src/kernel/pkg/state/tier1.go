@@ -70,12 +70,10 @@ func (m *ActiveStateManager) GetSnapshot() map[string]interface{} {
 
 	// Collapse the DeltaLog into the main map
 	for _, entry := range m.state.DeltaLog {
-		// If the stepID already exists, we preserve the previous one under a unique 'historical' key
-		// before allowing the new one to occupy the primary slot.
-		if oldVal, exists := m.state.AccumulatedOutputs[entry.StepID]; exists {
-			histKey := entry.StepID + "_prev_" + time.Now().Format("150405")
-			m.state.AccumulatedOutputs[histKey] = oldVal
-		}
+		// Phase 18: [PRUNING] Memory Management
+		// To prevent Context Window bloat (Error 400), we no longer create infinite '_prev_' keys
+		// in the Active State. We only keep the latest result for each Step ID. 
+		// The full historical chain is still preserved in the Tier 4 Audit Logs and Database.
 		m.state.AccumulatedOutputs[entry.StepID] = entry.Output
 	}
 	
@@ -91,16 +89,18 @@ func (m *ActiveStateManager) GetSnapshot() map[string]interface{} {
 	return snapshot
 }
 
+const MAX_TIER1_STEPS = 50
+
 // RequiresTier2Snapshot evaluates the Snapshot Pruning rules.
 // It determines if the Tier 1 Active State has grown too large and requires
 // eviction/checkpointing to Tier 2 storage to maintain O(1) lookup performance.
-// Rule 1: Triggers if step count exceeds 50.
+// Rule 1: Triggers if step count exceeds the defined maximum.
 func (m *ActiveStateManager) RequiresTier2Snapshot() bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	
-	// Rule 1: Step count exceeds 50
-	if m.state.Metadata.StepCount > 50 {
+	// Rule 1: Step count exceeds the maximum allowed in Tier 1
+	if m.state.Metadata.StepCount > MAX_TIER1_STEPS {
 		return true
 	}
 	

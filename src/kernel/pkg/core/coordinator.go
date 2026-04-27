@@ -16,6 +16,7 @@ package core
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"gaia/kernel/pkg/common"
 	"gaia/kernel/pkg/logger"
@@ -26,6 +27,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -225,9 +227,24 @@ func (c *Coordinator) phase2Planning() error {
 
 		plan, err := c.planner.GeneratePlan(goal, activeState, capabilities)
 		if err != nil {
-			// Check if the error is a schema violation (malformed JSON)
 			lastErr = err
-			c.log.Warn("Planner returned invalid JSON", "error", err)
+			
+			// Phase 16: [BACKOFF] Handle Rate Limits (429)
+			// If we hit a rate limit (Too Many Requests), wait exponentially and retry.
+			if strings.Contains(err.Error(), "429") {
+				// Exponential backoff: 2s, 4s, 8s, 16s...
+				backoff := time.Duration(1 << uint(attempt+1)) * time.Second
+				c.log.Warn("Rate limit (429) detected. Cooling off before retry...", 
+					"backoff_seconds", backoff.Seconds(), 
+					"attempt", attempt+1, 
+					"max_attempts", maxRetries+1)
+				
+				time.Sleep(backoff)
+				continue
+			}
+
+			// Check if the error is a schema violation (malformed JSON)
+			c.log.Warn("Planner returned invalid JSON or API error", "error", err)
 			if types.ErrorCode(err.Error()) == types.ErrorCodeSchemaViolation || attempt == 0 {
 				correctionPrompt = BuildCorrectionPrompt("INVALID_JSON_HERE", err.Error())
 				c.events.Emit(common.Event{Type: types.EventPlanRejected, TaskID: c.task.TaskID})
@@ -240,7 +257,37 @@ func (c *Coordinator) phase2Planning() error {
 		c.task.Status = types.TaskStatusExecuting
 		c.task.UpdatedAt = time.Now().UTC()
 		c.task.Plan = plan.Steps
-		AddImplicitDependencies(c.task.Plan)
+		
+		// Phase 14: [ROOT CAUSE FIX] Direct Implicit Dependency Scanning
+		// This brute-force scan ensures that if Step B uses data from Step A (e.g., {{step_A.price}}),
+		// Step B is explicitly linked in the DAG, even if the Planner forgot 'depends_on'.
+		for i := range c.task.Plan {
+			step := &c.task.Plan[i]
+			inputBytes, _ := json.Marshal(step.Input)
+			inputStr := string(inputBytes)
+			
+			for _, otherStep := range c.task.Plan {
+				if otherStep.StepID == step.StepID {
+					continue
+				}
+				
+				// Check for the standard GAIA interpolation prefix (case-insensitive)
+				tagPattern := "{{" + strings.ToLower(otherStep.StepID)
+				if strings.Contains(strings.ToLower(inputStr), tagPattern) {
+					alreadyPresent := false
+					for _, d := range step.DependsOn {
+						if d == otherStep.StepID {
+							alreadyPresent = true
+							break
+						}
+					}
+					if !alreadyPresent {
+						step.DependsOn = append(step.DependsOn, otherStep.StepID)
+						c.log.Info("DAG: Linked implicit dependency", "step", step.StepID, "depends_on", otherStep.StepID)
+					}
+				}
+			}
+		}
 		c.task.HasMore = plan.HasMore
 		c.log.Info("Plan generated successfully", "step_count", len(plan.Steps), "has_more", plan.HasMore)
 		c.events.Emit(common.Event{Type: types.EventPlanGenerated, TaskID: c.task.TaskID})
