@@ -68,11 +68,13 @@ func (t *NativeTransport) Dispatch(req *types.Request, agent *types.AgentManifes
 	slog.Info("NativeTransport: received response", "endpoint", agent.Endpoint, "status", resp.StatusCode, "duration_ms", duration.Milliseconds())
 
 	if resp.StatusCode != http.StatusOK {
+		slog.Warn("NativeTransport: agent returned non-200 status", "endpoint", agent.Endpoint, "status", resp.StatusCode)
 		return nil, fmt.Errorf("transport: agent returned status %d", resp.StatusCode)
 	}
 
 	var gaiaResp types.Response
 	if err := json.NewDecoder(resp.Body).Decode(&gaiaResp); err != nil {
+		slog.Error("NativeTransport: failed to decode agent response", "endpoint", agent.Endpoint, "error", err)
 		return nil, fmt.Errorf("transport: failed to decode agent response: %w", err)
 	}
 

@@ -5,6 +5,7 @@ package core
 
 import (
 	"gaia/kernel/pkg/types"
+	"log/slog"
 	"strings"
 )
 
@@ -54,6 +55,10 @@ func CalculateCost(model string, usage types.UsageMetrics) float64 {
 
 	// If the model is not found, or it's a local model (e.g., 'llama3', 'mistral'), cost is 0.
 	if !found {
+		// Log a warning if it's a known cloud provider prefix but missing from our table
+		if strings.Contains(model, "gpt-") || strings.Contains(model, "claude-") {
+			slog.Warn("Pricing: Unknown cloud model detected, using 0.0 cost", "model", model)
+		}
 		return 0.0
 	}
 

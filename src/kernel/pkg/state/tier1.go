@@ -16,6 +16,7 @@
 package state
 
 import (
+	"fmt"
 	"gaia/kernel/pkg/types"
 	"sync"
 	"time"
@@ -70,10 +71,20 @@ func (m *ActiveStateManager) GetSnapshot() map[string]interface{} {
 
 	// Collapse the DeltaLog into the main map
 	for _, entry := range m.state.DeltaLog {
-		// Phase 18: [PRUNING] Memory Management
-		// To prevent Context Window bloat (Error 400), we no longer create infinite '_prev_' keys
-		// in the Active State. We only keep the latest result for each Step ID. 
-		// The full historical chain is still preserved in the Tier 4 Audit Logs and Database.
+		// Phase 18: [COLLISION PROTECTION] (BUG-002)
+		// If the StepID already exists, preserve the old one by renaming it
+		// before storing the new one. This prevents "state amnesia" if the
+		// Planner reuses IDs.
+		if oldData, exists := m.state.AccumulatedOutputs[entry.StepID]; exists {
+			// Find a unique version name
+			for v := 1; v < 100; v++ {
+				versionedKey := fmt.Sprintf("%s_v%d", entry.StepID, v)
+				if _, taken := m.state.AccumulatedOutputs[versionedKey]; !taken {
+					m.state.AccumulatedOutputs[versionedKey] = oldData
+					break
+				}
+			}
+		}
 		m.state.AccumulatedOutputs[entry.StepID] = entry.Output
 	}
 	
@@ -81,10 +92,13 @@ func (m *ActiveStateManager) GetSnapshot() map[string]interface{} {
 	m.state.DeltaLog = m.state.DeltaLog[:0]
 
 	// Return a deep copy to prevent the caller (e.g. Interpolator) from mutating internal state
-	snapshot := make(map[string]interface{}, len(m.state.AccumulatedOutputs))
+	snapshot := make(map[string]interface{}, len(m.state.AccumulatedOutputs)+1)
 	for k, v := range m.state.AccumulatedOutputs {
 		snapshot[k] = v
 	}
+	
+	// Inject metadata for Phase Awareness (BUG-002)
+	snapshot["metadata"] = m.state.Metadata
 	
 	return snapshot
 }

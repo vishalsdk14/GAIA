@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"gaia/kernel/pkg/types"
+	"strings"
 )
 
 // SystemPrompt defines the strict instructions for the LLM to act as the GAIA Planner.
@@ -37,8 +38,9 @@ WEB NAVIGATION STRATEGY (PANDA/TuriX):
 9. **SEARCH DISCOVERY**: To search for a product, first use "find_element" or "get_map" to locate the search bar (look for "search" or "input"). Then use "type_id" and "press_key" (Enter). Do not try to find the product on the home page.
 10. **PRICE EXTRACTION**: Prices often contain currency symbols (₹, $, £). When using "get_map", look for the "text" field that contains these symbols or numeric values near the product title. Use "scrape_id" on that specific ID.
 11. SEARCH HINT: After typing into a search box, use "press_key" with "Enter" as it is more reliable than finding and clicking a search icon.
-11. **Unique Step IDs**: Use unique IDs for EVERY step throughout the task lifecycle (e.g., if you finished step 1-3, start your next plan with step 4). Never reuse "step_1" in a later plan as it will overwrite your previous data.
-12. **Mapping Source**: IDs for {{step_id.map[N].id}} come ONLY from "get_map" steps. You cannot extract IDs from "navigate" or "type" steps.
+11. **UNIQUE STEP IDS (CRITICAL)**: You MUST use unique IDs for EVERY step throughout the task lifecycle. If you already finished steps 1-5, you MUST start your next plan with "step_6". Never reuse "step_1" as it will overwrite your previous results and cause interpolation failures.
+12. **SEARCH RECOVERY**: If you just searched and don't see the results, call "get_map" to see the NEW IDs. Do not try to search again with the same query unless the page failed to load.
+14. **GREEDY PLANNING**: Do not stop after every step. If you know the next 3-5 steps (e.g., Type -> Enter -> Wait -> Scrape), include them ALL in a single plan to save time and resources.
 
 INTERPOLATION CHEATSHEET:
 - To use an ID from a previous "get_map" step (e.g. step_1): {{step_1.map[0].id}}
@@ -69,13 +71,23 @@ OUTPUT SCHEMA (JSON):
 // BuildUserPrompt constructs the highly structured context window for the LLM.
 // It bundles the Goal, Active State, and Capability Manifest into a single prompt.
 func BuildUserPrompt(goal string, state map[string]interface{}, capabilities []types.Capability) (string, error) {
-	stateBytes, err := json.Marshal(state)
+	// Phase 18: [COMPRESSION] Prune state to save tokens and cost (BUG-002)
+	compressedState := compressState(state)
+	
+	// Track progress for the Planner
+	stepCount := 0
+	if meta, ok := state["metadata"].(map[string]interface{}); ok {
+		if sc, ok := meta["step_count"].(float64); ok {
+			stepCount = int(sc)
+		}
+	}
+
+	stateBytes, err := json.MarshalIndent(compressedState, "", "  ")
 	if err != nil {
 		return "", fmt.Errorf("core: failed to serialize state: %w", err)
 	}
 
-	// Filter down the capabilities to only what the LLM needs (name, description, schemas)
-	// to save tokens, though here we serialize the whole structs for simplicity.
+	// Filter down the capabilities to only what the LLM needs
 	capBytes, err := json.MarshalIndent(capabilities, "", "  ")
 	if err != nil {
 		return "", fmt.Errorf("core: failed to serialize capabilities: %w", err)
@@ -84,15 +96,132 @@ func BuildUserPrompt(goal string, state map[string]interface{}, capabilities []t
 	prompt := fmt.Sprintf(`USER GOAL:
 %s
 
+CURRENT MISSION PROGRESS: %d steps already executed.
+
 ACTIVE STATE:
 %s
 
 PROVIDED CAPABILITIES:
 %s
 
-Generate the raw JSON plan now.`, goal, string(stateBytes), string(capBytes))
+Generate the raw JSON plan now.`, goal, stepCount, string(stateBytes), string(capBytes))
 
 	return prompt, nil
+}
+
+// compressState recursively prunes large data structures in the state to save tokens.
+func compressState(state map[string]interface{}) map[string]interface{} {
+	pruned := make(map[string]interface{})
+	const maxStringLen = 200
+	const maxArrayLen = 100
+
+	// Phase 20: [CONTEXT_GC] Identify the latest step that contains a "map" to preserve it
+	// We want to keep the most recent visual data but toss old maps to save tokens.
+	latestMapStep := ""
+	for k, v := range state {
+		if strings.HasPrefix(k, "step_") {
+			if m, ok := v.(map[string]interface{}); ok {
+				if _, hasMap := m["map"]; hasMap {
+					latestMapStep = k 
+				}
+			}
+		}
+	}
+
+	for k, v := range state {
+		// Rule 1: Skip internal binary paths or large media references
+		if strings.Contains(k, "screenshot_path") || strings.Contains(k, "media") {
+			continue
+		}
+
+		// Rule 2: Prune old heavy data (Keep only the latest map to save ~90% of history tokens)
+		if strings.HasPrefix(k, "step_") && k != latestMapStep {
+			if m, ok := v.(map[string]interface{}); ok {
+				smallStep := make(map[string]interface{})
+				for sk, sv := range m {
+					if sk != "map" && sk != "results" {
+						smallStep[sk] = sv
+					} else {
+						smallStep[sk] = "[PRUNED_OLD_DATA_TO_SAVE_TOKENS]"
+					}
+				}
+				pruned[k] = smallStep
+				continue
+			}
+		}
+
+		pruned[k] = compressValue(v, maxStringLen, maxArrayLen)
+	}
+
+	return pruned
+}
+
+// compressValue is a recursive helper to trim strings, arrays, and maps.
+func compressValue(v interface{}, maxStringLen, maxArrayLen int) interface{} {
+	switch val := v.(type) {
+	case string:
+		if len(val) > maxStringLen {
+			// Optimization: Never prune strings containing currency or keywords
+			if strings.Contains(val, "₹") || strings.Contains(strings.ToLower(val), "coca") {
+				return val
+			}
+			return val[:maxStringLen] + "...[TRUNCATED]"
+		}
+		return val
+	case []interface{}:
+		if len(val) > maxArrayLen {
+			newArr := make([]interface{}, 0, maxArrayLen)
+			// Priority 1: Items with keywords
+			for _, item := range val {
+				if m, ok := item.(map[string]interface{}); ok {
+					txt, _ := m["text"].(string)
+					sLower := strings.ToLower(txt)
+					if strings.Contains(txt, "₹") || strings.Contains(sLower, "coca") || strings.Contains(sLower, "add") {
+						newArr = append(newArr, item)
+					}
+				}
+				if len(newArr) >= maxArrayLen {
+					break
+				}
+			}
+			// Priority 2: Fill remaining slots with the first items
+			for _, item := range val {
+				if len(newArr) >= maxArrayLen {
+					break
+				}
+				// Avoid duplicates if already added by priority
+				alreadyAdded := false
+				for _, added := range newArr {
+					if added == item {
+						alreadyAdded = true
+						break
+					}
+				}
+				if !alreadyAdded {
+					newArr = append(newArr, item)
+				}
+			}
+			return newArr
+		}
+		// Recursively compress elements in the array
+		newArr := make([]interface{}, len(val))
+		for i, item := range val {
+			newArr[i] = compressValue(item, maxStringLen, maxArrayLen)
+		}
+		return newArr
+	case map[string]interface{}:
+		newMap := make(map[string]interface{})
+		for mk, mv := range val {
+			// Rule 3: Strip non-essential visual metadata from elements (X/Y/W/H)
+			if mk == "x" || mk == "y" || mk == "width" || mk == "height" {
+				continue
+			}
+			newMap[mk] = compressValue(mv, maxStringLen, maxArrayLen)
+		}
+		return newMap
+	default:
+		return v
+	}
 }
 
 // BuildCorrectionPrompt is used for Phase 2.3 (Planner Failure Recovery).

@@ -17,6 +17,7 @@ package core
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"regexp"
 	"strconv"
 	"strings"
@@ -143,7 +144,7 @@ func ResolveInterpolation(input interface{}, hotState map[string]interface{}) (i
 			return string(valBytes)
 		}
 		
-		fmt.Printf("WARNING: Scheduler could not resolve interpolation key: %s\n", keyPath)
+		slog.Warn("Scheduler could not resolve interpolation key", "key", keyPath)
 		return match
 	})
 	

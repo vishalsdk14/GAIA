@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"gaia/kernel/pkg/types"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -58,6 +59,11 @@ func (s *Server) handleGetTask(w http.ResponseWriter, r *http.Request) {
 	if task == nil {
 		jsonResponse(w, http.StatusNotFound, map[string]string{"error": "Task not found"})
 		return
+	}
+
+	// Phase 18: [TELEMETRY] Calculate real-time duration for active tasks
+	if task.Status != types.TaskStatusCompleted && task.Status != types.TaskStatusFailed && task.Status != types.TaskStatusCancelled {
+		task.TotalDurationMS = time.Since(task.CreatedAt).Milliseconds()
 	}
 
 	jsonResponse(w, http.StatusOK, task)

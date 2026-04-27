@@ -59,6 +59,11 @@ func (p *LocalLLMPlanner) GeneratePlan(goal string, state map[string]interface{}
 		"prompt": userPrompt,
 		"stream": false,
 		"format": "json",
+		"options": map[string]interface{}{
+			"num_ctx":    16384, // Phase 20: Expanded context for Intel Mac stability
+			"num_thread": 4,     // Match your Quad-Core i7
+			"temperature": 0.1,  // Keep it focused on JSON
+		},
 	}
 
 	bodyBytes, _ := json.Marshal(reqBody)
@@ -69,7 +74,11 @@ func (p *LocalLLMPlanner) GeneratePlan(goal string, state map[string]interface{}
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{Timeout: 300 * time.Second}
-	slog.Info("Intelligence: Local LLM Request", "model", p.Model, "goal", goal)
+	slog.Info("Intelligence: Local LLM Request", 
+		"model", p.Model, 
+		"goal", goal,
+		"state_keys", len(state),
+		"prompt_len", len(userPrompt))
 	start := time.Now()
 	
 	resp, err := client.Do(req)
@@ -118,6 +127,11 @@ func (p *LocalLLMPlanner) Complete(prompt string) (string, error) {
 		"model":  p.Model,
 		"prompt": prompt,
 		"stream": false,
+		"options": map[string]interface{}{
+			"num_ctx":    16384, // Phase 20: Expanded context for Intel Mac stability
+			"num_thread": 4,     // Match your Quad-Core i7
+			"temperature": 0.1,  // Keep it focused on JSON
+		},
 	}
 
 	bodyBytes, _ := json.Marshal(reqBody)
@@ -188,7 +202,11 @@ func (p *CloudLLMPlanner) GeneratePlan(goal string, state map[string]interface{}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+p.APIKey)
 
-	slog.Info("Intelligence: Cloud LLM Request", "model", p.Model, "goal", goal)
+	slog.Info("Intelligence: Cloud LLM Request", 
+		"model", p.Model, 
+		"goal", goal,
+		"state_keys", len(state),
+		"prompt_len", len(userPrompt))
 	start := time.Now()
 	
 	client := &http.Client{Timeout: 60 * time.Second}

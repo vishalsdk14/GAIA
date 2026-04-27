@@ -59,8 +59,10 @@ Thumbs.db
 .project
 .settings/
 .classpath
+# GAIA Specific
 src/kernel/data/
-coverage/
+src/kernel/media/
+*.log
 
 # Next.js specific (Root level)
 .next/

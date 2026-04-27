@@ -17,6 +17,7 @@ package registry
 import (
 	"fmt"
 	"gaia/kernel/pkg/types"
+	"log/slog"
 	"time"
 )
 
@@ -59,6 +60,7 @@ func (r *InMemoryRegistry) Register(manifest *types.AgentManifest) error {
 		}
 	}
 
+	slog.Info("Agent registered successfully", "agent_id", manifest.AgentID, "capabilities", len(manifest.Capabilities))
 	return nil
 }
 
@@ -124,12 +126,14 @@ func (r *InMemoryRegistry) UpdateHealth(agentID string, success bool, latencyMS 
 	record.TrustScore = (record.RollingMetrics.SuccessRate * 0.6) + (latencyScore * 0.3) + (availability * 0.1)
 
 	// 4. Lifecycle Enforcement (Thresholds from failure-handling.md)
-	if record.TrustScore < 0.70 {
+	if record.TrustScore < 0.70 && record.Status != types.AgentStatusDegraded {
 		// If trust drops below 0.70, degrade priority
 		record.Status = types.AgentStatusDegraded
+		slog.Warn("Agent health degraded", "agent_id", agentID, "trust_score", record.TrustScore)
 	} else if record.TrustScore > 0.85 && record.Status == types.AgentStatusDegraded {
 		// If trust recovers above 0.85, restore to active
 		record.Status = types.AgentStatusActive
+		slog.Info("Agent health restored", "agent_id", agentID, "trust_score", record.TrustScore)
 	}
 
 	return nil

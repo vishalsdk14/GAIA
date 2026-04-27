@@ -80,7 +80,8 @@ func FastResolveInterpolation(input interface{}, hotState map[string]interface{}
 		i += end + 2 // Skip }}
 
 		// Resolve key (Phase 11: Support dot-notation for nested objects)
-		if val, exists := GetNestedValue(hotState, key); exists {
+		val, err := GetNestedValue(hotState, key)
+		if err == nil {
 			switch v := val.(type) {
 			case string:
 				// Escape the string for JSON but remove the surrounding quotes 
@@ -94,7 +95,7 @@ func FastResolveInterpolation(input interface{}, hotState map[string]interface{}
 				buf.Write(valBytes)
 			}
 		} else {
-			return nil, fmt.Errorf("fast_interpolation: variable {{%s}} could not be resolved in the current state", key)
+			return nil, err
 		}
 	}
 
@@ -107,7 +108,7 @@ func FastResolveInterpolation(input interface{}, hotState map[string]interface{}
 }
 
 // GetNestedValue extracts a value from a nested map or slice using dot notation (e.g., "state.user.id" or "step.map[0].id").
-func GetNestedValue(m map[string]interface{}, path string) (interface{}, bool) {
+func GetNestedValue(m map[string]interface{}, path string) (interface{}, error) {
 	parts := strings.Split(path, ".")
 	var current interface{} = m
 
@@ -120,7 +121,7 @@ func GetNestedValue(m map[string]interface{}, path string) (interface{}, bool) {
 			
 			var index int
 			if _, err := fmt.Sscanf(indexStr, "%d", &index); err != nil {
-				return nil, false
+				return nil, fmt.Errorf("fast_interpolation: invalid array index '%s'", indexStr)
 			}
 
 			// First, get the array from the current map
@@ -128,10 +129,10 @@ func GetNestedValue(m map[string]interface{}, path string) (interface{}, bool) {
 				if val, exists := curMap[arrayName]; exists {
 					current = val
 				} else {
-					return nil, false
+					return nil, fmt.Errorf("fast_interpolation: key '%s' not found in map", arrayName)
 				}
 			} else {
-				return nil, false
+				return nil, fmt.Errorf("fast_interpolation: cannot access array '%s' because parent is not a map (it is %T)", arrayName, current)
 			}
 
 			// Then, get the element from the array
@@ -139,16 +140,16 @@ func GetNestedValue(m map[string]interface{}, path string) (interface{}, bool) {
 				if index >= 0 && index < len(curSlice) {
 					current = curSlice[index]
 				} else {
-					return nil, false
+					return nil, fmt.Errorf("fast_interpolation: index %d out of bounds for array '%s' (array has %d items)", index, arrayName, len(curSlice))
 				}
 			} else if curSlice, ok := current.([]map[string]interface{}); ok {
 				if index >= 0 && index < len(curSlice) {
 					current = curSlice[index]
 				} else {
-					return nil, false
+					return nil, fmt.Errorf("fast_interpolation: index %d out of bounds for array '%s' (array has %d items)", index, arrayName, len(curSlice))
 				}
 			} else {
-				return nil, false
+				return nil, fmt.Errorf("fast_interpolation: '%s' is not an array (it is a %T)", arrayName, current)
 			}
 			continue
 		}
@@ -159,7 +160,7 @@ func GetNestedValue(m map[string]interface{}, path string) (interface{}, bool) {
 			} else if part == "output" {
 				continue 
 			} else {
-				return nil, false
+				return nil, fmt.Errorf("fast_interpolation: key '%s' not found in map", part)
 			}
 		} else if curSlice, ok := current.([]interface{}); ok {
 			// Handle dot-notation indexing (e.g., "results.0")
@@ -167,15 +168,15 @@ func GetNestedValue(m map[string]interface{}, path string) (interface{}, bool) {
 				if idx >= 0 && idx < len(curSlice) {
 					current = curSlice[idx]
 				} else {
-					return nil, false
+					return nil, fmt.Errorf("fast_interpolation: index %d out of bounds for slice", idx)
 				}
 			} else {
-				return nil, false
+				return nil, fmt.Errorf("fast_interpolation: key '%s' not found in map", part)
 			}
 		} else {
-			return nil, false
+			return nil, fmt.Errorf("fast_interpolation: cannot access property '%s' on %T", part, current)
 		}
 	}
 
-	return current, true
+	return current, nil
 }

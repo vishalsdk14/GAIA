@@ -158,6 +158,19 @@ client.tasks.subscribe(task.id, (event) => {
 
 ---
 
+## 🤖 The Agent Army
+
+The GAIA Kernel is designed to orchestrate specialized agents. You can find pre-built, production-ready agents in our dedicated repository:
+
+👉 **[gaia-agents](https://github.com/vishalsdk14/gaia-agents)**
+
+Current featured agents:
+*   **Iris**: Advanced browser agent (PANDA/TuriX) for complex web navigation and scraping.
+*   **Echo**: Multi-modal speech and notification agent.
+*   **Atlas**: Geographic and mapping specialist.
+
+---
+
 ## Core Principles
 
 ### 1. Deterministic Kernel, Probabilistic Planner
@@ -183,7 +196,7 @@ GAIA natively consumes **Google A2A** (agent-to-agent) and **Anthropic MCP** (ag
 
 ## Current Status
 
-> **⚠️ GAIA is in the Implementation phase.**
+> **🛠 GAIA is in the Alpha Stabilization & Bug Fixing phase.**
 
 ### What exists today
 
