@@ -240,6 +240,7 @@ func (c *Coordinator) phase2Planning() error {
 		c.task.Status = types.TaskStatusExecuting
 		c.task.UpdatedAt = time.Now().UTC()
 		c.task.Plan = plan.Steps
+		AddImplicitDependencies(c.task.Plan)
 		c.task.HasMore = plan.HasMore
 		c.log.Info("Plan generated successfully", "step_count", len(plan.Steps), "has_more", plan.HasMore)
 		c.events.Emit(common.Event{Type: types.EventPlanGenerated, TaskID: c.task.TaskID})

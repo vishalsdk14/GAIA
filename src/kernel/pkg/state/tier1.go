@@ -70,6 +70,12 @@ func (m *ActiveStateManager) GetSnapshot() map[string]interface{} {
 
 	// Collapse the DeltaLog into the main map
 	for _, entry := range m.state.DeltaLog {
+		// If the stepID already exists, we preserve the previous one under a unique 'historical' key
+		// before allowing the new one to occupy the primary slot.
+		if oldVal, exists := m.state.AccumulatedOutputs[entry.StepID]; exists {
+			histKey := entry.StepID + "_prev_" + time.Now().Format("150405")
+			m.state.AccumulatedOutputs[histKey] = oldVal
+		}
 		m.state.AccumulatedOutputs[entry.StepID] = entry.Output
 	}
 	

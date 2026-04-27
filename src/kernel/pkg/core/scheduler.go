@@ -24,6 +24,48 @@ import (
 	"gaia/kernel/pkg/types"
 )
 
+// AddImplicitDependencies scans each step for interpolation tags (e.g., {{step_1...}})
+// and automatically adds the referenced step IDs to the 'DependsOn' slice if they
+// are part of the current plan. This prevents race conditions caused by LLM forgetfulness.
+func AddImplicitDependencies(plan []types.Step) {
+	// 1. Create a map of all step IDs in the current plan for O(1) existence checking
+	currentPlanIDs := make(map[string]bool)
+	for _, s := range plan {
+		currentPlanIDs[s.StepID] = true
+	}
+
+	for i := range plan {
+		step := &plan[i]
+		
+		// Marshal input to scan for tags
+		bytes, _ := json.Marshal(step.Input)
+		matches := interpolationRegex.FindAllStringSubmatch(string(bytes), -1)
+		
+		for _, match := range matches {
+			if len(match) < 2 { continue }
+			keyPath := strings.TrimSpace(match[1])
+			parts := strings.Split(keyPath, ".")
+			if len(parts) == 0 { continue }
+			
+			referencedID := parts[0]
+			
+			// If this ID is in the current plan, it must be a dependency
+			if currentPlanIDs[referencedID] && referencedID != step.StepID {
+				alreadyPresent := false
+				for _, d := range step.DependsOn {
+					if d == referencedID {
+						alreadyPresent = true
+						break
+					}
+				}
+				if !alreadyPresent {
+					step.DependsOn = append(step.DependsOn, referencedID)
+				}
+			}
+		}
+	}
+}
+
 // GetReadySteps implements Phase 3: DAG Resolution.
 // It scans the plan and returns all steps that are pending and whose dependencies are fulfilled.
 // A dependency is fulfilled if it is either 'done' in the current plan OR exists in the historical state.

@@ -81,5 +81,9 @@ func (t *NativeTransport) Dispatch(req *types.Request, agent *types.AgentManifes
 	}
 	gaiaResp.Metrics.DurationMS = int(time.Since(startTime).Milliseconds())
 
+	// Phase 11: Developer Experience - Log full response in DEBUG mode
+	respBytes, _ := json.Marshal(gaiaResp)
+	slog.Debug("NativeTransport: decoded response body", "endpoint", agent.Endpoint, "body", string(respBytes))
+
 	return &gaiaResp, nil
 }

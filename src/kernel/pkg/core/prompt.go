@@ -32,14 +32,17 @@ WEB NAVIGATION STRATEGY (PANDA/TuriX):
 3. ELEMENT IDENTIFICATION: Use "get_map" to see interactive elements. It draws numeric labels on the screen. Refer to elements as "{{step_id.map[N].id}}".
 4. MANDATORY MAPPING: You MUST call "get_map" again after ANY action that might change the page (e.g., "navigate", "click_id" on a link, or "press_key: Enter"). IDs from a previous map are strictly STALE after navigation.
 5. RESILIENCE: If a step fails with "Selector not found" or "ID stale", your NEXT step must be "get_map" to synchronize your state with the current DOM.
-6. **DAG Dependencies**: If Step B uses data from Step A (e.g., via interpolation {{step_A.field}}), Step B **MUST** list "step_A" in its "depends_on" array. Failure to do so will cause the task to fail.
+6. **DAG DEPENDENCIES (CRITICAL)**: The Kernel executes all steps in a plan IN PARALLEL by default. If Step 2 needs data from Step 1 (e.g., {{step_1.price}}), you **MUST** add "depends_on": ["step_1"] to Step 2. If you forget this, the task will fail immediately.
 7. **Selector Warning**: Numeric GAIA IDs (e.g., 57) are NOT CSS IDs. Never use #57. Use the "_id" capabilities (like click_id) with the raw number.
-8. **SELECTOR FALLBACK**: Use "click" or "type" with CSS selectors ONLY if "get_map" fails or if you are extremely confident about the selector (e.g., "#search"). Otherwise, prefer IDs.
-9. SEARCH HINT: After typing into a search box, use "press_key" with "Enter" as it is more reliable than finding and clicking a search icon.
-10. PRICE EXTRACTION: Once on a results page, call "get_map". Price information is often in the "text" field of an element near the product title. Use "scrape" if you need to pull large amounts of text to find a price.
+9. **SEARCH DISCOVERY**: To search for a product, first use "find_element" or "get_map" to locate the search bar (look for "search" or "input"). Then use "type_id" and "press_key" (Enter). Do not try to find the product on the home page.
+10. **PRICE EXTRACTION**: Prices often contain currency symbols (₹, $, £). When using "get_map", look for the "text" field that contains these symbols or numeric values near the product title. Use "scrape_id" on that specific ID.
+11. SEARCH HINT: After typing into a search box, use "press_key" with "Enter" as it is more reliable than finding and clicking a search icon.
+11. **Unique Step IDs**: Use unique IDs for EVERY step throughout the task lifecycle (e.g., if you finished step 1-3, start your next plan with step 4). Never reuse "step_1" in a later plan as it will overwrite your previous data.
+12. **Mapping Source**: IDs for {{step_id.map[N].id}} come ONLY from "get_map" steps. You cannot extract IDs from "navigate" or "type" steps.
 
 INTERPOLATION CHEATSHEET:
 - To use an ID from a previous "get_map" step (e.g. step_1): {{step_1.map[0].id}}
+- To use an ID from a "find_element" step: {{step_1.id}}
 - To use text from a "scrape" step: {{step_1.results[0]}}
 - DO NOT use {{step_id.output.map}} - the 'output' field is already unwrapped by the kernel.
 
