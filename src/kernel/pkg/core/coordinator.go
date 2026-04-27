@@ -15,6 +15,7 @@
 package core
 
 import (
+	"encoding/base64"
 	"fmt"
 	"gaia/kernel/pkg/common"
 	"gaia/kernel/pkg/logger"
@@ -23,13 +24,20 @@ import (
 	"gaia/kernel/pkg/state"
 	"gaia/kernel/pkg/types"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 )
 
-// Coordinator manages the lifecycle of a single Task.
-// It executes the 10-phase control loop in a dedicated goroutine, ensuring that
-// state transitions are atomic and that invariants from docs/specs/control-loop.md are held.
+const (
+	// DefaultReplanCoolOff is the duration to wait before starting a re-plan cycle
+	// to prevent busy-looping if the planner gets stuck.
+	DefaultReplanCoolOff = 1 * time.Second
+)
+
+// Coordinator implements the GAIA Control Loop.
+// It manages task state, dispatches steps to agents, and handles recovery.
 type Coordinator struct {
 	mu        sync.Mutex
 	config    *KernelConfig
@@ -153,6 +161,26 @@ func (c *Coordinator) phase2Planning() error {
 	}
 
 	activeState := c.stateMgr.GetSnapshot()
+	
+	// Add current_url and current_title to state for Rule 31 (URL Stickiness)
+	// We search backwards from the latest completed step to find these values.
+	for i := len(c.task.Plan) - 1; i >= 0; i-- {
+		step := c.task.Plan[i]
+		if step.Status == types.StepStatusDone {
+			if out, ok := step.Output.(map[string]interface{}); ok {
+				if url, ok := out["url"].(string); ok {
+					activeState["current_url"] = url
+				}
+				if title, ok := out["title"].(string); ok {
+					activeState["current_title"] = title
+				}
+				if activeState["current_url"] != nil {
+					break
+				}
+			}
+		}
+	}
+
 	capabilities := c.registry.GetAllCapabilities()
 	
 	// Phase 2.3: Failure Recovery Loop
@@ -162,6 +190,35 @@ func (c *Coordinator) phase2Planning() error {
 	maxRetries := c.config.MaxReplans // Or add PlannerMaxRetries to config
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		goal := c.task.Goal
+		if c.replans > 0 {
+			// Phase 2.1: Visual Analysis (TuriX Port)
+			// Check for a screenshot from a failed step to provide better context
+			var visionContext string
+			for i := len(c.task.Plan) - 1; i >= 0; i-- {
+				step := c.task.Plan[i]
+				if step.Status == types.StepStatusFailed || step.Status == types.StepStatusDone {
+					if out, ok := step.Output.(map[string]interface{}); ok {
+						if path, ok := out["screenshot_path"].(string); ok {
+							c.log.Info("Performing Vision Analysis on failure screenshot", "path", path)
+							data, _ := os.ReadFile(path)
+							b64 := base64.StdEncoding.EncodeToString(data)
+							analysis, err := c.planner.Vision("Describe the current state of this web page. If there is an error message, list it. If there are red numeric labels, list what they correspond to.", b64)
+							if err == nil {
+								visionContext = fmt.Sprintf("\nVISUAL ANALYSIS OF CURRENT PAGE:\n%s", analysis)
+								break
+							}
+						}
+					}
+				}
+			}
+
+			goal = fmt.Sprintf("SYSTEM: This is a RE-PLAN (Attempt %d). "+
+				"Original Goal: %s. %s\n"+
+				"Please examine the AccumulatedOutputs and Visual Analysis to see what failed. "+
+				"Generate a COMPLETE new plan. If IDs are available in the visual analysis, use click_id/type_id.", 
+				c.replans, c.task.Goal, visionContext)
+		}
+
 		if correctionPrompt != "" {
 			goal = correctionPrompt
 		}
@@ -183,7 +240,8 @@ func (c *Coordinator) phase2Planning() error {
 		c.task.Status = types.TaskStatusExecuting
 		c.task.UpdatedAt = time.Now().UTC()
 		c.task.Plan = plan.Steps
-		c.log.Info("Plan generated successfully", "step_count", len(plan.Steps))
+		c.task.HasMore = plan.HasMore
+		c.log.Info("Plan generated successfully", "step_count", len(plan.Steps), "has_more", plan.HasMore)
 		c.events.Emit(common.Event{Type: types.EventPlanGenerated, TaskID: c.task.TaskID})
 		c.audit.Log("planner", string(types.EventPlanGenerated), c.task.TaskID, map[string]interface{}{"step_count": len(plan.Steps), "task_id": c.task.TaskID})
 
@@ -227,14 +285,9 @@ func (c *Coordinator) failTask(err error) error {
 // executeDAG manages the parallel dispatch of ready steps (Phases 3-8).
 func (c *Coordinator) executeDAG() error {
 	// Phase 3: DAG Resolution
-	readySteps := GetReadySteps(c.task.Plan)
+	readySteps := GetReadySteps(c.task.Plan, c.stateMgr.GetSnapshot())
 
-	// Phase 11: Quota Enforcement
-	if len(readySteps) > 0 {
-		if err := c.quota.IncrementStep(c.task.TaskID); err != nil {
-			return c.failTask(err)
-		}
-	}
+	// Quota is now enforced per-dispatch in the loop below to avoid busy-loop exhaustion
 
 	// Phase 10: Governance - Check Usage Policies
 	if err := c.checkUsagePolicies(); err != nil {
@@ -245,17 +298,42 @@ func (c *Coordinator) executeDAG() error {
 	}
 
 	if len(readySteps) == 0 {
-		// Are there any pending steps left?
-		hasPending := false
+		// Are there any pending/active steps left?
+		hasActive := false
+		hasFailed := false
 		for _, s := range c.task.Plan {
 			if s.Status == types.StepStatusPending || s.Status == types.StepStatusRunning || s.Status == types.StepStatusPendingAsync {
-				hasPending = true
-				break
+				hasActive = true
+			}
+			if s.Status == types.StepStatusFailed {
+				hasFailed = true
 			}
 		}
-		if !hasPending {
-			// Phase 10: Loop Termination (Success)
+
+		if !hasActive {
+			if hasFailed {
+				c.log.Warn("Task execution finished but some steps failed", "task_id", c.task.TaskID)
+				// If a step failed but the task status wasn't updated by handleStepFailure, do it now.
+				// This ensures the user sees a 'Failed' status instead of a false 'Success'.
+				c.mu.Lock()
+				if c.task.Status == types.TaskStatusExecuting {
+					c.task.Status = types.TaskStatusFailed
+				}
+				c.mu.Unlock()
+				return nil
+			}
+
 			c.mu.Lock()
+			if c.task.HasMore {
+				// Incremental Planning: Loop back to planning phase
+				c.task.Status = types.TaskStatusPlanning
+				c.mu.Unlock()
+				c.log.Info("Current plan finished, HasMore=true, transitioning back to planning")
+				return nil
+			}
+
+			// Loop Termination (Success)
+			// Only mark as completed if all steps are Done and no failures exist in the plan.
 			c.task.Status = types.TaskStatusCompleted
 			now := time.Now().UTC()
 			c.task.FinishedAt = &now
@@ -296,6 +374,17 @@ func (c *Coordinator) executeDAG() error {
 			continue
 		}
 		agentCounts[targetAgent]++
+
+		// Phase 11: Quota Enforcement (Increment only on actual dispatch)
+		c.log.Info("Quota increment", "step_id", sPtr.StepID, "capability", sPtr.Capability)
+		if err := c.quota.IncrementStep(c.task.TaskID); err != nil {
+			return c.failTask(err)
+		}
+
+		// Transition to Running synchronously to prevent race condition in GetReadySteps
+		c.mu.Lock()
+		sPtr.Status = types.StepStatusRunning
+		c.mu.Unlock()
 
 		wg.Add(1)
 		go func(step *types.Step) {
@@ -404,10 +493,6 @@ func (c *Coordinator) executeDAG() error {
 				Mode:       types.RequestModeSync,
 			}
 
-			c.mu.Lock()
-			step.Status = types.StepStatusRunning
-			c.mu.Unlock()
-
 			c.log.Info("Dispatching step", "step_id", step.StepID, "capability", step.Capability)
 			c.events.Emit(common.Event{Type: types.EventStepStarted, TaskID: c.task.TaskID, StepID: step.StepID})
 			c.audit.Log("kernel", string(types.EventStepStarted), step.StepID, map[string]interface{}{"agent": agentManifest.AgentID, "task_id": c.task.TaskID})
@@ -429,6 +514,9 @@ func (c *Coordinator) executeDAG() error {
 				c.stateMgr.AppendResult(step.StepID, step.Output)
 				c.mu.Unlock()
 
+				// Phase 7.1: Visual Processing (Panda Port)
+				c.processStepOutput(step)
+
 				c.log.Info("Step completed", "step_id", step.StepID)
 				c.events.Emit(common.Event{Type: types.EventStepCompleted, TaskID: c.task.TaskID, StepID: step.StepID})
 				c.audit.Log("kernel", string(types.EventStepCompleted), step.StepID, map[string]interface{}{"task_id": c.task.TaskID})
@@ -439,6 +527,11 @@ func (c *Coordinator) executeDAG() error {
 				}
 			} else {
 				c.log.Warn("Step execution failed by agent", "step_id", step.StepID)
+				
+				// Phase 7.1: Visual Processing (Panda Port) even on failure
+				step.Output = resp.Output // Carry over output for processing
+				c.processStepOutput(step)
+				
 				c.handleStepFailure(step, resp.Error, agentManifest)
 			}
 		}(sPtr)
@@ -497,16 +590,6 @@ func (c *Coordinator) handleStepFailure(step *types.Step, err *types.Error, agen
 	// Tier 2: Fallback (Skipped for brevity in Task 1, usually involves Registry lookup for same capability)
 
 	// Tier 3: Replan
-	if c.replans < c.config.MaxReplans {
-		c.replans++
-		c.task.Status = types.TaskStatusPlanning
-		c.log.Info("Escalation Tier 3: Triggering Re-plan", "replan_count", c.replans)
-		c.events.Emit(common.Event{Type: types.EventReplanTriggered, TaskID: c.task.TaskID})
-		return
-	}
-
-	// Tier 4: Abort
-	step.Status = types.StepStatusFailed
 	step.Error = err
 	c.task.Status = types.TaskStatusFailed
 	c.log.Error("Escalation Tier 4: Aborting task", "step_id", step.StepID)
@@ -516,6 +599,7 @@ func (c *Coordinator) handleStepFailure(step *types.Step, err *types.Error, agen
 func (c *Coordinator) failStep(step *types.Step, code string, msg string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.log.Error("Step execution failed early", "step_id", step.StepID, "code", code, "error", msg)
 	step.Status = types.StepStatusFailed
 	step.Error = &types.Error{
 		Code:    types.ErrorCode(code),
@@ -661,4 +745,43 @@ func (c *Coordinator) checkUsagePolicies() error {
 	}
 
 	return nil
+}
+
+// processStepOutput extracts rich media (screenshots) from agent responses and saves them to disk
+// to avoid bloating the memory state while preserving them for debugging and vision analysis.
+func (c *Coordinator) processStepOutput(step *types.Step) {
+	outputMap, ok := step.Output.(map[string]interface{})
+	if !ok {
+		return
+	}
+
+	screenshotB64, ok := outputMap["screenshot"].(string)
+	if !ok || screenshotB64 == "" {
+		return
+	}
+
+	// 1. Decode screenshot
+	data, err := base64.StdEncoding.DecodeString(screenshotB64)
+	if err != nil {
+		c.log.Warn("Failed to decode screenshot", "step_id", step.StepID, "error", err)
+		return
+	}
+
+	// 2. Save to media directory
+	filename := fmt.Sprintf("screenshot_%s_%d.jpg", step.StepID, time.Now().Unix())
+	mediaPath := filepath.Join(".", "media", filename)
+	
+	// Ensure directory exists
+	os.MkdirAll(filepath.Dir(mediaPath), 0755)
+
+	if err := os.WriteFile(mediaPath, data, 0644); err != nil {
+		c.log.Warn("Failed to save screenshot", "path", mediaPath, "error", err)
+		return
+	}
+
+	// 3. Replace base64 with file path in output to save memory
+	outputMap["screenshot_path"] = mediaPath
+	delete(outputMap, "screenshot")
+	
+	c.log.Info("Screenshot saved", "step_id", step.StepID, "path", mediaPath)
 }

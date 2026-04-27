@@ -36,6 +36,7 @@ type Task struct {
 	Goal        string                 `json:"goal"`
 	Status      TaskStatus             `json:"status"`
 	Plan        []Step                 `json:"plan,omitempty"`
+	HasMore     bool                   `json:"has_more"`
 	CurrentStep int                    `json:"current_step"`
 	Metadata    map[string]interface{} `json:"metadata,omitempty"`
 	CreatedAt   time.Time              `json:"created_at"`

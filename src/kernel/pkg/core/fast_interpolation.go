@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -82,16 +83,18 @@ func FastResolveInterpolation(input interface{}, hotState map[string]interface{}
 		if val, exists := GetNestedValue(hotState, key); exists {
 			switch v := val.(type) {
 			case string:
-				buf.WriteString(v)
+				// Escape the string for JSON but remove the surrounding quotes 
+				// since the tag is already inside quotes in the JSON input.
+				valBytes, _ := json.Marshal(v)
+				if len(valBytes) >= 2 {
+					buf.Write(valBytes[1 : len(valBytes)-1])
+				}
 			default:
 				valBytes, _ := json.Marshal(v)
 				buf.Write(valBytes)
 			}
 		} else {
-			// Keep original tag if unresolvable
-			buf.WriteString("{{")
-			buf.WriteString(key)
-			buf.WriteString("}}")
+			return nil, fmt.Errorf("fast_interpolation: variable {{%s}} could not be resolved in the current state", key)
 		}
 	}
 
@@ -103,15 +106,69 @@ func FastResolveInterpolation(input interface{}, hotState map[string]interface{}
 	return resolved, nil
 }
 
-// GetNestedValue extracts a value from a nested map using dot notation (e.g., "state.user.id").
+// GetNestedValue extracts a value from a nested map or slice using dot notation (e.g., "state.user.id" or "step.map[0].id").
 func GetNestedValue(m map[string]interface{}, path string) (interface{}, bool) {
 	parts := strings.Split(path, ".")
 	var current interface{} = m
 
 	for _, part := range parts {
+		// Handle array indexing like "map[0]"
+		if strings.Contains(part, "[") && strings.HasSuffix(part, "]") {
+			bracketIdx := strings.Index(part, "[")
+			arrayName := part[:bracketIdx]
+			indexStr := part[bracketIdx+1 : len(part)-1]
+			
+			var index int
+			if _, err := fmt.Sscanf(indexStr, "%d", &index); err != nil {
+				return nil, false
+			}
+
+			// First, get the array from the current map
+			if curMap, ok := current.(map[string]interface{}); ok {
+				if val, exists := curMap[arrayName]; exists {
+					current = val
+				} else {
+					return nil, false
+				}
+			} else {
+				return nil, false
+			}
+
+			// Then, get the element from the array
+			if curSlice, ok := current.([]interface{}); ok {
+				if index >= 0 && index < len(curSlice) {
+					current = curSlice[index]
+				} else {
+					return nil, false
+				}
+			} else if curSlice, ok := current.([]map[string]interface{}); ok {
+				if index >= 0 && index < len(curSlice) {
+					current = curSlice[index]
+				} else {
+					return nil, false
+				}
+			} else {
+				return nil, false
+			}
+			continue
+		}
+
 		if curMap, ok := current.(map[string]interface{}); ok {
 			if val, exists := curMap[part]; exists {
 				current = val
+			} else if part == "output" {
+				continue 
+			} else {
+				return nil, false
+			}
+		} else if curSlice, ok := current.([]interface{}); ok {
+			// Handle dot-notation indexing (e.g., "results.0")
+			if idx, err := strconv.Atoi(part); err == nil {
+				if idx >= 0 && idx < len(curSlice) {
+					current = curSlice[idx]
+				} else {
+					return nil, false
+				}
 			} else {
 				return nil, false
 			}

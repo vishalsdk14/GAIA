@@ -46,7 +46,7 @@ func NewOrchestrator(c *KernelConfig, r registry.CapabilityRegistry, ts *state.T
 		activeTasks: make(map[string]*Coordinator),
 		planner:     p,
 		transport:   trans,
-		quota:       NewQuotaManager(100, 50),
+		quota:       NewQuotaManager(c.MaxConcurrentTasks, c.MaxStepsPerTask),
 	}
 }
 

@@ -18,6 +18,7 @@ package core
 
 import (
 	"os"
+	"strconv"
 )
 
 // LLMProvider defines the supported types of LLM backends.
@@ -54,6 +55,9 @@ type KernelConfig struct {
 
 	// MaxConcurrentPerAgent defines the maximum number of parallel steps a single agent can handle.
 	MaxConcurrentPerAgent int `json:"max_concurrent_per_agent"`
+
+	// MaxStepsPerTask defines the maximum number of steps allowed per task (Phase 11).
+	MaxStepsPerTask int `json:"max_steps_per_task"`
 
 	// DBPath is the location of the persistent SQLite database for the kernel.
 	DBPath string `json:"db_path"`
@@ -93,9 +97,10 @@ func DefaultConfig() *KernelConfig {
 		PlannerProvider:    LLMProviderLocal,
 		PlannerEndpoint:    "http://localhost:11434/api/generate", // Default Ollama endpoint
 		PlannerModel:       "llama3",
-		MaxReplans:         2,
+		MaxReplans:         5,
 		MaxConcurrentTasks: 10,
-		MaxConcurrentPerAgent: 3,
+		MaxConcurrentPerAgent: 1,
+		MaxStepsPerTask:    100,
 		DBPath:             "./data/gaia_state.db",
 		LogLevel:           "INFO",
 		Environment:        "development",
@@ -135,5 +140,10 @@ func (c *KernelConfig) LoadConfigFromEnv() {
 	}
 	if val := os.Getenv("GAIA_AUDIT_LOG_PATH"); val != "" {
 		c.AuditLogPath = val
+	}
+	if val := os.Getenv("GAIA_MAX_STEPS_PER_TASK"); val != "" {
+		if i, err := strconv.Atoi(val); err == nil {
+			c.MaxStepsPerTask = i
+		}
 	}
 }

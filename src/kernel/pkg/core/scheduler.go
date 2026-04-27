@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"gaia/kernel/pkg/types"
@@ -25,7 +26,8 @@ import (
 
 // GetReadySteps implements Phase 3: DAG Resolution.
 // It scans the plan and returns all steps that are pending and whose dependencies are fulfilled.
-func GetReadySteps(plan []types.Step) []*types.Step {
+// A dependency is fulfilled if it is either 'done' in the current plan OR exists in the historical state.
+func GetReadySteps(plan []types.Step, history map[string]interface{}) []*types.Step {
 	// 1. Build a map of step statuses for O(1) dependency checking
 	statusMap := make(map[string]types.StepStatus)
 	for _, step := range plan {
@@ -37,16 +39,17 @@ func GetReadySteps(plan []types.Step) []*types.Step {
 	// 2. Scan for ready steps
 	for i := range plan {
 		step := &plan[i]
-		if step.Status != types.StepStatusPending && step.Status != types.StepStatusFailed {
-			// We only consider Pending steps (or Failed steps that have been reset to Pending during retry).
-			// If it's already running or done, skip it.
+		if step.Status != types.StepStatusPending {
+			// We only consider Pending steps.
+			// If it's already running, done, or failed, skip it.
 			continue
 		}
 
-		// Check if all dependencies are "done"
+		// Check if all dependencies are "done" or in history
 		allDepsMet := true
 		for _, depID := range step.DependsOn {
-			if statusMap[depID] != types.StepStatusDone {
+			_, inHistory := history[depID]
+			if statusMap[depID] != types.StepStatusDone && !inHistory {
 				allDepsMet = false
 				break
 			}
@@ -64,11 +67,7 @@ func GetReadySteps(plan []types.Step) []*types.Step {
 var interpolationRegex = regexp.MustCompile(`\{\{([^}]+)\}\}`)
 
 // ResolveInterpolation implements Phase 4: Data Binding.
-// It recursively resolves variables injected by the planner into the step input.
 func ResolveInterpolation(input interface{}, hotState map[string]interface{}) (interface{}, error) {
-	// The most robust way to handle arbitrary JSON interpolation in Go without complex
-	// recursive reflection is to marshal to JSON, do string replacement, and unmarshal.
-	
 	bytes, err := json.Marshal(input)
 	if err != nil {
 		return nil, fmt.Errorf("scheduler: failed to marshal input for interpolation: %w", err)
@@ -76,29 +75,65 @@ func ResolveInterpolation(input interface{}, hotState map[string]interface{}) (i
 	
 	strInput := string(bytes)
 	
-	// Perform regex replacement
 	strInput = interpolationRegex.ReplaceAllStringFunc(strInput, func(match string) string {
-		// match is like "{{state.user_email}}"
-		key := strings.TrimSpace(match[2 : len(match)-2])
+		keyPath := strings.TrimSpace(match[2 : len(match)-2])
 		
-		// Attempt to resolve the key from the hot state
-		// Note: A full implementation would use a JSONPath library to traverse nested state objects.
-		// For the foundation phase, we do a flat map lookup.
-		if val, exists := hotState[key]; exists {
-			// Serialize the resolved value so it safely injects back into the JSON string
-			valBytes, _ := json.Marshal(val)
-			// Strip the surrounding quotes if the original JSON expected a raw string interpolation inside quotes?
-			// Actually, if they wrote `"email": "{{state.email}}"`, then json.Marshal adds quotes: `"foo@bar"`.
-			// So it becomes `"email": ""foo@bar""` which is invalid JSON.
-			// Let's assume the planner writes `"email": "{{state.email}}"`.
-			// If val is string, we just inject the raw string because it's already wrapped in quotes in the template.
-			if strVal, ok := val.(string); ok {
-				return strVal
+		// Normalize [0] to .0
+		keyPath = strings.ReplaceAll(keyPath, "[", ".")
+		keyPath = strings.ReplaceAll(keyPath, "]", "")
+		
+		parts := strings.Split(keyPath, ".")
+		
+		var current interface{} = hotState
+		found := false
+		
+		for i, part := range parts {
+			if part == "" { continue }
+			
+			// Special handling for the common LLM mistake: adding ".output."
+			if i == 1 && part == "output" {
+				if m, ok := current.(map[string]interface{}); ok {
+					if _, exists := m["output"]; !exists {
+						continue // Skip "output" layer
+					}
+				}
+			}
+
+			if m, ok := current.(map[string]interface{}); ok {
+				if val, exists := m[part]; exists {
+					current = val
+					found = true
+					continue
+				}
+			}
+			
+			if a, ok := current.([]interface{}); ok {
+				if idx, err := strconv.Atoi(part); err == nil {
+					if idx >= 0 && idx < len(a) {
+						current = a[idx]
+						found = true
+						continue
+					}
+				}
+			}
+
+			found = false
+			break
+		}
+		
+		if found {
+			valBytes, _ := json.Marshal(current)
+			if s, ok := current.(string); ok {
+				// Escape for JSON but strip the marshaled quotes since the tag is inside quotes
+				if len(valBytes) >= 2 {
+					return string(valBytes[1 : len(valBytes)-1])
+				}
+				return s
 			}
 			return string(valBytes)
 		}
 		
-		// If unresolvable, leave it alone (it will fail later in Phase 5/6)
+		fmt.Printf("WARNING: Scheduler could not resolve interpolation key: %s\n", keyPath)
 		return match
 	})
 	
