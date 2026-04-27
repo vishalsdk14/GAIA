@@ -29,6 +29,14 @@ const (
 	LLMProviderLocal LLMProvider = "local"
 	// LLMProviderCloud refers to a cloud-based LLM provider (e.g., OpenAI, Anthropic).
 	LLMProviderCloud LLMProvider = "cloud"
+
+	// DefaultContextSize defines the default context window for local LLMs.
+	// 16,384 is chosen to provide enough memory for complex browser maps (Phase 20 optimization).
+	DefaultContextSize = 16384
+
+	// DefaultInferenceThreads defines the number of CPU cores to use for local LLM inference.
+	// 4 is optimized for Quad-Core Intel i7 processors (Phase 20 optimization).
+	DefaultInferenceThreads = 4
 )
 
 // KernelConfig houses the dynamic configuration parameters for the GAIA Kernel.

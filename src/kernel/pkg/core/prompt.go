@@ -110,17 +110,26 @@ Generate the raw JSON plan now.`, goal, stepCount, string(stateBytes), string(ca
 }
 
 // compressState recursively prunes large data structures in the state to save tokens.
+// It specifically targets historical browser maps and long strings that are no longer
+// required for the current planning phase.
 func compressState(state map[string]interface{}) map[string]interface{} {
+	// pruned initialized as the cleaned output map
 	pruned := make(map[string]interface{})
+	
+	// maxStringLen defines the cutoff for truncating long text fields (e.g., debug logs)
 	const maxStringLen = 200
+	// maxArrayLen defines the maximum number of items to keep in generic lists
 	const maxArrayLen = 100
 
-	// Phase 20: [CONTEXT_GC] Identify the latest step that contains a "map" to preserve it
-	// We want to keep the most recent visual data but toss old maps to save tokens.
+	// Phase 20: [CONTEXT_GC] Identify the latest step that contains a "map" to preserve it.
+	// In web navigation, only the current page's interactive map is critical. 
+	// Storing maps from every previous step in history causes exponential token growth.
 	latestMapStep := ""
 	for k, v := range state {
+		// Only look at keys starting with "step_"
 		if strings.HasPrefix(k, "step_") {
 			if m, ok := v.(map[string]interface{}); ok {
+				// Check if this step result contains a browser map
 				if _, hasMap := m["map"]; hasMap {
 					latestMapStep = k 
 				}
@@ -128,22 +137,26 @@ func compressState(state map[string]interface{}) map[string]interface{} {
 		}
 	}
 
+	// Iterate through the global state to apply pruning rules
 	for k, v := range state {
-		// Rule 1: Skip internal binary paths or large media references
+		// Rule 1: Skip internal binary paths or large media references that the LLM cannot process.
+		// These paths are used by the Kernel for local storage but bloat the prompt.
 		if strings.Contains(k, "screenshot_path") || strings.Contains(k, "media") {
 			continue
 		}
 
-		// Rule 2: Prune old heavy data (Keep only the latest map to save ~90% of history tokens)
+		// Rule 2: Prune old heavy data (Context GC).
+		// We preserve the structure of previous steps (so the LLM knows they happened)
+		// but we strip the "map" and large "results" from all but the most recent step.
 		if strings.HasPrefix(k, "step_") && k != latestMapStep {
 			if m, ok := v.(map[string]interface{}); ok {
 				smallStep := make(map[string]interface{})
-				for sk, sv := range m {
-					if sk != "map" && sk != "results" {
-						smallStep[sk] = sv
-					} else {
-						smallStep[sk] = "[PRUNED_OLD_DATA_TO_SAVE_TOKENS]"
+				for subK, subV := range m {
+					// Drop the map and large results for historical steps
+					if subK == "map" || subK == "results" {
+						continue
 					}
+					smallStep[subK] = subV
 				}
 				pruned[k] = smallStep
 				continue

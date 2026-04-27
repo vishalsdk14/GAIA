@@ -60,8 +60,8 @@ func (p *LocalLLMPlanner) GeneratePlan(goal string, state map[string]interface{}
 		"stream": false,
 		"format": "json",
 		"options": map[string]interface{}{
-			"num_ctx":    16384, // Phase 20: Expanded context for Intel Mac stability
-			"num_thread": 4,     // Match your Quad-Core i7
+			"num_ctx":     DefaultContextSize,
+			"num_thread":  DefaultInferenceThreads,
 			"temperature": 0.1,  // Keep it focused on JSON
 		},
 	}
@@ -128,8 +128,8 @@ func (p *LocalLLMPlanner) Complete(prompt string) (string, error) {
 		"prompt": prompt,
 		"stream": false,
 		"options": map[string]interface{}{
-			"num_ctx":    16384, // Phase 20: Expanded context for Intel Mac stability
-			"num_thread": 4,     // Match your Quad-Core i7
+			"num_ctx":     DefaultContextSize,
+			"num_thread":  DefaultInferenceThreads,
 			"temperature": 0.1,  // Keep it focused on JSON
 		},
 	}
