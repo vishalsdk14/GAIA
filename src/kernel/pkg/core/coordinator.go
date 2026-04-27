@@ -368,14 +368,16 @@ func (c *Coordinator) executeDAG() error {
 			
 			// Phase 12: Fail gracefully instead of looping infinitely
 			sPtr.Status = types.StepStatusFailed
-			sPtr.Error = fmt.Sprintf("no agent registered for capability: %s", sPtr.Capability)
+			sPtr.Error = &types.Error{
+				Code:    types.ErrorCodeCapabilityNotFound,
+				Message: fmt.Sprintf("no agent registered for capability: %s", sPtr.Capability),
+			}
 			c.task.Status = types.TaskStatusFailed
-			c.task.Error = sPtr.Error
 			
 			if err := c.taskStore.SaveTask(c.task); err != nil {
 				c.log.Error("Failed to save task failure state", "error", err)
 			}
-			return fmt.Errorf("task failed: %s", sPtr.Error) // Terminate the execution loop
+			return fmt.Errorf("task failed: %s", sPtr.Error.Message) // Terminate the execution loop
 		}
 		targetAgent := agentRecord.Manifest.AgentID
 
