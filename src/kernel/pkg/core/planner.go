@@ -103,6 +103,7 @@ func (p *LocalLLMPlanner) GeneratePlan(goal string, state map[string]interface{}
 		return nil, fmt.Errorf("core: failed to decode ollama response: %w", err)
 	}
 
+	slog.Debug("Intelligence: Raw LLM Response", "response", ollamaResp.Response)
 	record, err := parsePlanJSON(ollamaResp.Response)
 	if err != nil {
 		return nil, err

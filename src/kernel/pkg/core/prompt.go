@@ -49,7 +49,7 @@ INTERPOLATION CHEATSHEET:
 - DO NOT use {{step_id.output.map}} - the 'output' field is already unwrapped by the kernel.
 
 RULES:
-1. Generate between 1 to 3 steps maximum. We use incremental planning.
+1. Generate between 1 to 3 steps maximum. You MUST generate at least one step unless the goal is already fully achieved.
 2. If the goal requires more steps after these, set "has_more" to true.
 3. Every step must use exactly one capability from the PROVIDED CAPABILITIES list.
 4. You may interpolate data into step inputs using "{{step_id.field}}" or "{{state.field}}".
