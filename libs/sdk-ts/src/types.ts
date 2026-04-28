@@ -108,9 +108,11 @@ export interface Error {
 }
 
 export interface Metrics {
-    cost_estimate?: number;
-    duration_ms?:   number;
-    tokens_used?:   number;
+    cost_estimate?:     number;
+    duration_ms?:       number;
+    tokens_used?:       number;
+    prompt_tokens?:     number;
+    completion_tokens?: number;
 }
 
 export interface Step {

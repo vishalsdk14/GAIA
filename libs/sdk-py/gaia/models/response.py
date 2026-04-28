@@ -26,6 +26,8 @@ class RequestMetrics(BaseModel):
     duration_ms: Optional[int] = None
     cost_estimate: Optional[float] = None
     tokens_used: Optional[int] = None
+    prompt_tokens: Optional[int] = None
+    completion_tokens: Optional[int] = None
 
 
 class Response(BaseModel):

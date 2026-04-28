@@ -635,8 +635,15 @@ func (c *Coordinator) executeDAG() error {
 				// Phase 18: [TELEMETRY] Aggregate Execution Metrics
 				if resp.Metrics != nil {
 					c.mu.Lock()
+					
+					// Aggregate granular tokens if available
 					c.task.TokensPrompt += resp.Metrics.PromptTokens
 					c.task.TokensCompletion += resp.Metrics.CompletionTokens
+					
+					// Fallback for agents reporting only total tokens
+					if resp.Metrics.TokensUsed > 0 && resp.Metrics.PromptTokens == 0 && resp.Metrics.CompletionTokens == 0 {
+						c.task.TokensCompletion += resp.Metrics.TokensUsed
+					}
 					
 					// If agent provided an explicit cost, use it, otherwise we could calculate it
 					// but for now we trust the agent's reported cost if present.
