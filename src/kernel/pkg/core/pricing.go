@@ -43,13 +43,17 @@ var PricingTable = map[string]ModelPricing{
 func CalculateCost(model string, usage types.UsageMetrics) float64 {
 	var pricing ModelPricing
 	found := false
+	longestMatch := -1
 
-	// Search for the best match in the pricing table
+	// Search for the longest prefix match in the pricing table to ensure determinism
+	// e.g., 'gpt-4o-mini' should match 'gpt-4o-mini' pricing, not 'gpt-4o'.
 	for modelPrefix, p := range PricingTable {
 		if strings.HasPrefix(strings.ToLower(model), strings.ToLower(modelPrefix)) {
-			pricing = p
-			found = true
-			break
+			if len(modelPrefix) > longestMatch {
+				pricing = p
+				found = true
+				longestMatch = len(modelPrefix)
+			}
 		}
 	}
 

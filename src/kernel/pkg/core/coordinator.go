@@ -244,6 +244,7 @@ func (c *Coordinator) phase2Planning() error {
 			// Calculate and aggregate cost (BUG-002)
 			cost := CalculateCost(c.config.PlannerModel, plan.Usage)
 			c.task.EstimatedCostUSD += cost
+			c.syncMetadata()
 
 			c.log.Debug("Telemetry: Planning metrics updated", 
 				"prompt", plan.Usage.PromptTokens, 
@@ -630,6 +631,28 @@ func (c *Coordinator) executeDAG() error {
 				if err := c.taskStore.SaveTask(c.task); err != nil {
 					c.log.Error("Failed to checkpoint step completion", "step_id", step.StepID, "error", err)
 				}
+
+				// Phase 18: [TELEMETRY] Aggregate Execution Metrics
+				if resp.Metrics != nil {
+					c.mu.Lock()
+					c.task.TokensPrompt += resp.Metrics.PromptTokens
+					c.task.TokensCompletion += resp.Metrics.CompletionTokens
+					
+					// If agent provided an explicit cost, use it, otherwise we could calculate it
+					// but for now we trust the agent's reported cost if present.
+					if resp.Metrics.CostEstimate > 0 {
+						c.task.EstimatedCostUSD += resp.Metrics.CostEstimate
+					}
+					
+					c.syncMetadata() // Ensure governance policies see updated values
+					c.mu.Unlock()
+					
+					c.log.Debug("Telemetry: Execution metrics updated", 
+						"step_id", step.StepID,
+						"prompt", resp.Metrics.PromptTokens,
+						"completion", resp.Metrics.CompletionTokens,
+						"cost_usd", resp.Metrics.CostEstimate)
+				}
 			} else {
 				c.log.Warn("Step execution failed by agent", "step_id", step.StepID)
 				
@@ -889,4 +912,30 @@ func (c *Coordinator) processStepOutput(step *types.Step) {
 	delete(outputMap, "screenshot")
 	
 	c.log.Info("Screenshot saved", "step_id", step.StepID, "path", mediaPath)
+}
+
+// syncMetadata ensures that task.Metadata["usage"] and task.Metadata["cost"] are in sync
+// with the primary telemetry fields to enable governance policy enforcement.
+func (c *Coordinator) syncMetadata() {
+	if c.task.Metadata == nil {
+		c.task.Metadata = make(map[string]interface{})
+	}
+
+	usage := make(map[string]interface{})
+	if u, ok := c.task.Metadata["usage"].(map[string]interface{}); ok {
+		usage = u
+	}
+	usage["prompt_tokens"] = c.task.TokensPrompt
+	usage["completion_tokens"] = c.task.TokensCompletion
+	usage["total_tokens"] = c.task.TokensPrompt + c.task.TokensCompletion
+	usage["tokens"] = usage["total_tokens"] // Backward compatibility for policies
+	usage["requests"] = c.task.TotalSteps
+	c.task.Metadata["usage"] = usage
+
+	cost := make(map[string]interface{})
+	if cs, ok := c.task.Metadata["cost"].(map[string]interface{}); ok {
+		cost = cs
+	}
+	cost["usd"] = c.task.EstimatedCostUSD
+	c.task.Metadata["cost"] = cost
 }

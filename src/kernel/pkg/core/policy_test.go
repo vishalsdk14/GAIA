@@ -21,7 +21,7 @@ func TestCheckUsagePolicies(t *testing.T) {
 	}
 
 	logger.Init("INFO")
-	coord := NewCoordinator(task, config, nil, nil, nil, nil)
+	coord := NewCoordinator(task, config, nil, nil, nil, nil, nil)
 	err := coord.checkUsagePolicies()
 	if err == nil {
 		t.Fatal("expected error due to policy violation, got nil")

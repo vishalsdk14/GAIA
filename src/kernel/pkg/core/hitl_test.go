@@ -26,7 +26,7 @@ func TestHITLApprovalFlow(t *testing.T) {
 	
 	// Mock subsystems
 	config := DefaultConfig()
-	coord := NewCoordinator(task, config, nil, nil, nil, nil)
+	coord := NewCoordinator(task, config, nil, nil, nil, nil, nil)
 
 	// 2. Simulate execution (normally done by Run loop)
 	// We'll manually call a simulation of the policy check logic

@@ -42,9 +42,11 @@ type Request struct {
 
 // RequestMetrics tracks execution telemetry for a request.
 type RequestMetrics struct {
-	DurationMS   int     `json:"duration_ms,omitempty"`
-	CostEstimate float64 `json:"cost_estimate,omitempty"`
-	TokensUsed   int     `json:"tokens_used,omitempty"`
+	DurationMS       int     `json:"duration_ms,omitempty"`
+	CostEstimate     float64 `json:"cost_estimate,omitempty"`
+	TokensUsed       int     `json:"tokens_used,omitempty"`
+	PromptTokens     int     `json:"prompt_tokens,omitempty"`
+	CompletionTokens int     `json:"completion_tokens,omitempty"`
 }
 
 // Response is the standardized output returned by an Agent after processing a Request.
