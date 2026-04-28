@@ -49,6 +49,9 @@ func GetReadySteps(plan []types.Step, history map[string]interface{}) []*types.S
 		// Check if all dependencies are "done" or in history
 		allDepsMet := true
 		for _, depID := range step.DependsOn {
+			if depID == "" {
+				continue
+			}
 			// Phase 15: [ROOT CAUSE FIX] Isolation of Current Plan vs History
 			// If the dependency ID exists in the current plan, we MUST wait for it to be 'Done'.
 			// We only fall back to checking history if the dependency is NOT in the current plan.
