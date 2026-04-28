@@ -82,16 +82,23 @@ func BuildUserPrompt(goal string, state map[string]interface{}, capabilities []t
 		}
 	}
 
-	stateBytes, err := json.MarshalIndent(compressedState, "", "  ")
-	if err != nil {
-		return "", fmt.Errorf("core: failed to serialize state: %w", err)
+	stateBytes, _ := json.MarshalIndent(compressedState, "", "  ")
+
+	// Phase 22: [CAPABILITY_PRUNING] If the capability manifest is too large, 
+	// strip descriptions and non-essential metadata to fit within local context limits.
+	processedCapabilities := capabilities
+	if len(capabilities) > 5 {
+		processedCapabilities = make([]types.Capability, len(capabilities))
+		for i, cap := range capabilities {
+			processedCapabilities[i] = types.Capability{
+				Name:        cap.Name,
+				InputSchema: cap.InputSchema, // Keep the schema, it's essential
+				// Prune description for local models to save tokens
+			}
+		}
 	}
 
-	// Filter down the capabilities to only what the LLM needs
-	capBytes, err := json.MarshalIndent(capabilities, "", "  ")
-	if err != nil {
-		return "", fmt.Errorf("core: failed to serialize capabilities: %w", err)
-	}
+	capBytes, _ := json.MarshalIndent(processedCapabilities, "", "  ")
 
 	prompt := fmt.Sprintf(`USER GOAL:
 %s

@@ -73,7 +73,7 @@ func (p *LocalLLMPlanner) GeneratePlan(goal string, state map[string]interface{}
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{Timeout: 300 * time.Second}
+	client := &http.Client{Timeout: 600 * time.Second}
 	slog.Info("Intelligence: Local LLM Request", 
 		"model", p.Model, 
 		"goal", goal,
