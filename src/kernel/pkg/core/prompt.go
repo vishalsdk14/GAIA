@@ -35,9 +35,9 @@ WEB NAVIGATION STRATEGY (PANDA/TuriX):
 5. RESILIENCE: If a step fails with "Selector not found" or "ID stale", your NEXT step must be "get_map" to synchronize your state with the current DOM.
 6. **DAG DEPENDENCIES (CRITICAL)**: The Kernel executes all steps in a plan IN PARALLEL by default. If Step 2 needs data from Step 1 (e.g., {{step_1.price}}), you **MUST** add "depends_on": ["step_1"] to Step 2. If you forget this, the task will fail immediately.
 7. **Selector Warning**: Numeric GAIA IDs (e.g., 57) are NOT CSS IDs. Never use #57. Use the "_id" capabilities (like click_id) with the raw number.
-9. **SEARCH DISCOVERY**: To search for a product, first use "find_element" or "get_map" to locate the search bar (look for "search" or "input"). Then use "type_id" and "press_key" (Enter). Do not try to find the product on the home page.
-10. **PRICE EXTRACTION**: Prices often contain currency symbols (₹, $, £). When using "get_map", look for the "text" field that contains these symbols or numeric values near the product title. Use "scrape_id" on that specific ID.
-11. SEARCH HINT: After typing into a search box, use "press_key" with "Enter" as it is more reliable than finding and clicking a search icon.
+8. **SEARCH DISCOVERY**: To search for a product, first use "find_element" or "get_map" to locate the search bar (look for "search" or "input"). Then use "type_id" and "press_key" (Enter). Do not try to find the product on the home page.
+9. **PRICE EXTRACTION**: Prices often contain currency symbols (₹, $, £). When using "get_map", look for the "text" field that contains these symbols or numeric values near the product title. Use "scrape_id" on that specific ID.
+10. **SEARCH HINT: After typing into a search box, use "press_key" with "Enter" as it is more reliable than finding and clicking a search icon.
 11. **UNIQUE STEP IDS (CRITICAL)**: You MUST use unique IDs for EVERY step throughout the task lifecycle. If you already finished steps 1-5, you MUST start your next plan with "step_6". Never reuse "step_1" as it will overwrite your previous results and cause interpolation failures.
 12. **SEARCH RECOVERY**: If you just searched and don't see the results, call "get_map" to see the NEW IDs. Do not try to search again with the same query unless the page failed to load.
 14. **GREEDY PLANNING**: Do not stop after every step. If you know the next 3-5 steps (e.g., Type -> Enter -> Wait -> Scrape), include them ALL in a single plan to save time and resources.
@@ -84,21 +84,8 @@ func BuildUserPrompt(goal string, state map[string]interface{}, capabilities []t
 
 	stateBytes, _ := json.MarshalIndent(compressedState, "", "  ")
 
-	// Phase 22: [CAPABILITY_PRUNING] If the capability manifest is too large, 
-	// strip descriptions and non-essential metadata to fit within local context limits.
-	processedCapabilities := capabilities
-	if len(capabilities) > 5 {
-		processedCapabilities = make([]types.Capability, len(capabilities))
-		for i, cap := range capabilities {
-			processedCapabilities[i] = types.Capability{
-				Name:        cap.Name,
-				InputSchema: cap.InputSchema, // Keep the schema, it's essential
-				// Prune description for local models to save tokens
-			}
-		}
-	}
-
-	capBytes, _ := json.MarshalIndent(processedCapabilities, "", "  ")
+	// Filter down the capabilities to only what the LLM needs
+	capBytes, _ := json.MarshalIndent(capabilities, "", "  ")
 
 	prompt := fmt.Sprintf(`USER GOAL:
 %s
@@ -117,26 +104,15 @@ Generate the raw JSON plan now.`, goal, stepCount, string(stateBytes), string(ca
 }
 
 // compressState recursively prunes large data structures in the state to save tokens.
-// It specifically targets historical browser maps and long strings that are no longer
-// required for the current planning phase.
 func compressState(state map[string]interface{}) map[string]interface{} {
-	// pruned initialized as the cleaned output map
 	pruned := make(map[string]interface{})
-	
-	// maxStringLen defines the cutoff for truncating long text fields (e.g., debug logs)
 	const maxStringLen = 200
-	// maxArrayLen defines the maximum number of items to keep in generic lists
 	const maxArrayLen = 100
 
-	// Phase 20: [CONTEXT_GC] Identify the latest step that contains a "map" to preserve it.
-	// In web navigation, only the current page's interactive map is critical. 
-	// Storing maps from every previous step in history causes exponential token growth.
 	latestMapStep := ""
 	for k, v := range state {
-		// Only look at keys starting with "step_"
 		if strings.HasPrefix(k, "step_") {
 			if m, ok := v.(map[string]interface{}); ok {
-				// Check if this step result contains a browser map
 				if _, hasMap := m["map"]; hasMap {
 					latestMapStep = k 
 				}
@@ -144,22 +120,14 @@ func compressState(state map[string]interface{}) map[string]interface{} {
 		}
 	}
 
-	// Iterate through the global state to apply pruning rules
 	for k, v := range state {
-		// Rule 1: Skip internal binary paths or large media references that the LLM cannot process.
-		// These paths are used by the Kernel for local storage but bloat the prompt.
 		if strings.Contains(k, "screenshot_path") || strings.Contains(k, "media") {
 			continue
 		}
-
-		// Rule 2: Prune old heavy data (Context GC).
-		// We preserve the structure of previous steps (so the LLM knows they happened)
-		// but we strip the "map" and large "results" from all but the most recent step.
 		if strings.HasPrefix(k, "step_") && k != latestMapStep {
 			if m, ok := v.(map[string]interface{}); ok {
 				smallStep := make(map[string]interface{})
 				for subK, subV := range m {
-					// Drop the map and large results for historical steps
 					if subK == "map" || subK == "results" {
 						continue
 					}
@@ -169,10 +137,8 @@ func compressState(state map[string]interface{}) map[string]interface{} {
 				continue
 			}
 		}
-
 		pruned[k] = compressValue(v, maxStringLen, maxArrayLen)
 	}
-
 	return pruned
 }
 
@@ -181,7 +147,6 @@ func compressValue(v interface{}, maxStringLen, maxArrayLen int) interface{} {
 	switch val := v.(type) {
 	case string:
 		if len(val) > maxStringLen {
-			// Optimization: Never prune strings containing currency or keywords
 			if strings.Contains(val, "₹") || strings.Contains(strings.ToLower(val), "coca") {
 				return val
 			}
@@ -191,7 +156,6 @@ func compressValue(v interface{}, maxStringLen, maxArrayLen int) interface{} {
 	case []interface{}:
 		if len(val) > maxArrayLen {
 			newArr := make([]interface{}, 0, maxArrayLen)
-			// Priority 1: Items with keywords
 			for _, item := range val {
 				if m, ok := item.(map[string]interface{}); ok {
 					txt, _ := m["text"].(string)
@@ -204,12 +168,10 @@ func compressValue(v interface{}, maxStringLen, maxArrayLen int) interface{} {
 					break
 				}
 			}
-			// Priority 2: Fill remaining slots with the first items
 			for _, item := range val {
 				if len(newArr) >= maxArrayLen {
 					break
 				}
-				// Avoid duplicates if already added by priority
 				alreadyAdded := false
 				for _, added := range newArr {
 					if added == item {
@@ -223,7 +185,6 @@ func compressValue(v interface{}, maxStringLen, maxArrayLen int) interface{} {
 			}
 			return newArr
 		}
-		// Recursively compress elements in the array
 		newArr := make([]interface{}, len(val))
 		for i, item := range val {
 			newArr[i] = compressValue(item, maxStringLen, maxArrayLen)
@@ -232,7 +193,6 @@ func compressValue(v interface{}, maxStringLen, maxArrayLen int) interface{} {
 	case map[string]interface{}:
 		newMap := make(map[string]interface{})
 		for mk, mv := range val {
-			// Rule 3: Strip non-essential visual metadata from elements (X/Y/W/H)
 			if mk == "x" || mk == "y" || mk == "width" || mk == "height" {
 				continue
 			}
@@ -245,7 +205,6 @@ func compressValue(v interface{}, maxStringLen, maxArrayLen int) interface{} {
 }
 
 // BuildCorrectionPrompt is used for Phase 2.3 (Planner Failure Recovery).
-// It instructs the LLM to fix a specific schema violation or malformed JSON.
 func BuildCorrectionPrompt(failedResponse string, errorDetail string) string {
 	return fmt.Sprintf(`Your previous response was invalid.
 ERROR: %s

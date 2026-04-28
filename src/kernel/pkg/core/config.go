@@ -32,7 +32,7 @@ const (
 
 	// DefaultContextSize defines the default context window for local LLMs.
 	// 16,384 is chosen to provide enough memory for complex browser maps (Phase 20 optimization).
-	DefaultContextSize = 16384
+	DefaultContextSize = 8192
 
 	// DefaultInferenceThreads defines the number of CPU cores to use for local LLM inference.
 	// 4 is optimized for Quad-Core Intel i7 processors (Phase 20 optimization).
