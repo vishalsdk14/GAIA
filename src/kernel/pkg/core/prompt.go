@@ -156,31 +156,30 @@ func compressValue(v interface{}, maxStringLen, maxArrayLen int) interface{} {
 	case []interface{}:
 		if len(val) > maxArrayLen {
 			newArr := make([]interface{}, 0, maxArrayLen)
-			for _, item := range val {
+			addedIndices := make(map[int]bool)
+			// Priority 1: Items with keywords
+			for idx, item := range val {
 				if m, ok := item.(map[string]interface{}); ok {
 					txt, _ := m["text"].(string)
 					sLower := strings.ToLower(txt)
 					if strings.Contains(txt, "₹") || strings.Contains(sLower, "coca") || strings.Contains(sLower, "add") {
 						newArr = append(newArr, item)
+						addedIndices[idx] = true
 					}
 				}
 				if len(newArr) >= maxArrayLen {
 					break
 				}
 			}
-			for _, item := range val {
+			// Priority 2: Fill remaining slots with the first items
+			for idx, item := range val {
 				if len(newArr) >= maxArrayLen {
 					break
 				}
-				alreadyAdded := false
-				for _, added := range newArr {
-					if added == item {
-						alreadyAdded = true
-						break
-					}
-				}
-				if !alreadyAdded {
+				// Avoid duplicates if already added by priority
+				if !addedIndices[idx] {
 					newArr = append(newArr, item)
+					addedIndices[idx] = true
 				}
 			}
 			return newArr

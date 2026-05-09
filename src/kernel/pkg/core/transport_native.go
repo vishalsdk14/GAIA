@@ -56,7 +56,7 @@ func (t *NativeTransport) Dispatch(req *types.Request, agent *types.AgentManifes
 	}
 
 	startTime := time.Now()
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := &http.Client{Timeout: 90 * time.Second}
 	resp, err := client.Do(httpReq)
 	if err != nil {
 		slog.Error("NativeTransport: agent unavailable", "endpoint", agent.Endpoint, "error", err)

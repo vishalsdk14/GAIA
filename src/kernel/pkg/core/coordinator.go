@@ -317,7 +317,12 @@ func (c *Coordinator) phase2Planning() error {
 		c.task.HasMore = plan.HasMore
 		c.log.Info("Plan generated successfully", "step_count", len(plan.Steps), "has_more", plan.HasMore)
 		c.events.Emit(common.Event{Type: types.EventPlanGenerated, TaskID: c.task.TaskID})
-		c.audit.Log("planner", string(types.EventPlanGenerated), c.task.TaskID, map[string]interface{}{"step_count": len(plan.Steps), "task_id": c.task.TaskID})
+		c.audit.Log("planner", string(types.EventPlanGenerated), c.task.TaskID, map[string]interface{}{
+			"step_count":        len(plan.Steps),
+			"task_id":           c.task.TaskID,
+			"tokens_prompt":     plan.Usage.PromptTokens,
+			"tokens_completion": plan.Usage.CompletionTokens,
+		})
 
 		// Checkpoint 2: Plan Generation
 		if err := c.taskStore.SaveTask(c.task); err != nil {
@@ -353,6 +358,11 @@ func (c *Coordinator) failTask(err error) error {
 		Payload: map[string]interface{}{"error": err.Error()},
 	})
 	c.audit.Log("kernel", string(types.EventTaskFailed), c.task.TaskID, map[string]interface{}{"error": err.Error(), "task_id": c.task.TaskID})
+	
+	// Checkpoint failure
+	if err := c.taskStore.SaveTask(c.task); err != nil {
+		c.log.Error("Failed to checkpoint final task failure", "error", err)
+	}
 	
 	return err
 }
@@ -415,7 +425,11 @@ func (c *Coordinator) executeDAG() error {
 			c.mu.Unlock()
 			c.log.Info("Task completed successfully")
 			c.events.Emit(common.Event{Type: types.EventTaskCompleted, TaskID: c.task.TaskID})
-			c.audit.Log("kernel", string(types.EventTaskCompleted), c.task.TaskID, map[string]interface{}{"task_id": c.task.TaskID})
+			c.audit.Log("kernel", string(types.EventTaskCompleted), c.task.TaskID, map[string]interface{}{
+				"task_id":           c.task.TaskID,
+				"total_tokens":      c.task.TokensPrompt + c.task.TokensCompletion,
+				"estimated_cost_usd": c.task.EstimatedCostUSD,
+			})
 		}
 		return nil
 	}
@@ -625,7 +639,11 @@ func (c *Coordinator) executeDAG() error {
 
 				c.log.Info("Step completed", "step_id", step.StepID)
 				c.events.Emit(common.Event{Type: types.EventStepCompleted, TaskID: c.task.TaskID, StepID: step.StepID})
-				c.audit.Log("kernel", string(types.EventStepCompleted), step.StepID, map[string]interface{}{"task_id": c.task.TaskID})
+				c.audit.Log("kernel", string(types.EventStepCompleted), step.StepID, map[string]interface{}{
+					"task_id":       c.task.TaskID,
+					"tokens_used":   resp.Metrics.TokensUsed,
+					"cost_estimate": resp.Metrics.CostEstimate,
+				})
 
 				// Checkpoint 3: Step Completion
 				if err := c.taskStore.SaveTask(c.task); err != nil {
@@ -728,6 +746,11 @@ func (c *Coordinator) handleStepFailure(step *types.Step, err *types.Error, agen
 	step.Error = err
 	c.task.Status = types.TaskStatusFailed
 	c.log.Error("Escalation Tier 4: Aborting task", "step_id", step.StepID)
+	
+	// Checkpoint failure state
+	if err := c.taskStore.SaveTask(c.task); err != nil {
+		c.log.Error("Failed to checkpoint task failure", "error", err)
+	}
 }
 
 // failStep is a helper to mark a step as failed.
@@ -739,6 +762,11 @@ func (c *Coordinator) failStep(step *types.Step, code string, msg string) {
 	step.Error = &types.Error{
 		Code:    types.ErrorCode(code),
 		Message: msg,
+	}
+
+	// Checkpoint step failure
+	if err := c.taskStore.SaveTask(c.task); err != nil {
+		c.log.Error("Failed to checkpoint step failure", "error", err)
 	}
 }
 
