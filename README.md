@@ -10,9 +10,9 @@
 
 ---
 
-### GAIA is to AI Agents what an OS Kernel is to Processes.
+### The Kubernetes of AI Agents.
 
-It provides the stable ground, safety boundaries, and execution reliability that LLMs lack natively.
+GAIA is the generic orchestration and control plane for multi-agent systems. It provides the stable ground, state management, and execution reliability that LLMs lack natively, designed to be embedded into AI-native IDEs and enterprise workflows.
 
 [Quickstart](#-quickstart) · [Examples](#-minimal-example) · [Use Cases](#-use-cases) · [Design Spec](docs/design.md)
 
@@ -25,16 +25,16 @@ It provides the stable ground, safety boundaries, and execution reliability that
 *   **Build Resilient Swarms**: Automatically recover from agent timeouts or failures with a 4-tier escalation path (Retry → Fallback → Replan → Abort).
 *   **Run Untrusted Agents Safely**: Execute agents in isolated sandboxes with a "Deny-by-Default" policy firewall. No shared state chaos.
 *   **Connect Anything**: Seamlessly orchestrate OpenAI, Anthropic, and Google agents in a single unified pipeline via A2A and MCP protocols.
-*   **Centralized Intelligence Proxy**: Provide managed LLM access (Local/Cloud) to all agents through the Kernel, enabling unified telemetry, cost tracking, and secret isolation.
+*   **Centralized Intelligence Proxy**: Provide managed LLM access (Local/Cloud) to all agents through the Control Plane, enabling unified telemetry, cost tracking, and secret isolation.
 *   **Debug with Precision**: Every action is cryptographically signed and tracked in a tamper-proof audit log.
 
 ---
 
 ## 🚀 Quickstart
 
-Get the GAIA Kernel running in less than 60 seconds.
+Get the GAIA Control Plane running in less than 60 seconds.
 
-### 1. Start the Kernel
+### 1. Start the Control Plane
 ```bash
 # Clone the repository
 git clone https://github.com/vishalsdk14/GAIA.git && cd GAIA
@@ -46,7 +46,7 @@ GAIA_PLANNER_PROVIDER="local"
 GAIA_PLANNER_MODEL="llama3"
 EOF
 
-# Start the kernel (requires Go 1.22+)
+# Start the control plane (requires Go 1.22+)
 cd src/kernel && go run main.go
 ```
 
@@ -54,7 +54,7 @@ cd src/kernel && go run main.go
 > To use OpenAI, set `GAIA_PLANNER_PROVIDER="cloud"`, `GAIA_PLANNER_MODEL="gpt-4-turbo"`, and provide your `GAIA_PLANNER_API_KEY`.
 
 ### 2. Submit Your First Goal
-Open a new terminal and use the unified CLI to talk to the kernel:
+Open a new terminal and use the unified CLI to talk to the control plane:
 ```bash
 ./gaia submit "Research the impact of Llama 3 on the agentic ecosystem and save a summary to state."
 ```
@@ -96,11 +96,11 @@ client.tasks.subscribe(task.id, (event) => {
 | Policy firewall (no peer-to-peer) | ✗ | ✗ | ✗ | ✓ |
 | Tiered trust & agent quarantine | ✗ | ✗ | ✗ | ✓ |
 | A2A + MCP protocol support | ✗ | ✗ | ✗ | ✓ |
-| Deterministic kernel / probabilistic planner | partial | ✗ | ✗ | ✓ |
+| Deterministic control plane / probabilistic planner | partial | ✗ | ✗ | ✓ |
 | DAG-based parallel execution | ✓ | ✗ | ✗ | ✓ |
 | State snapshotting & bounded context | ✗ | ✗ | ✗ | ✓ |
 
-**GAIA is not a framework. It is a kernel.** Frameworks help you wire agents together. GAIA *is* the infrastructure that manages, secures, and orchestrates them.
+**GAIA is not a framework. It is an infrastructure control plane.** Frameworks (like LangChain or CrewAI) help you wire agents together at the application layer. GAIA *is* the foundational layer that manages, secures, and orchestrates them, much like Kubernetes does for containers.
 
 ---
 
@@ -115,7 +115,7 @@ client.tasks.subscribe(task.id, (event) => {
                     └──────────┬───────────┘
                                │
           ┌────────────────────▼────────────────────┐
-          │              GAIA KERNEL                 │
+          │              GAIA CONTROL PLANE                 │
           │                                          │
           │  ┌─────────────┐     ┌────────────────┐  │
           │  │ Goal Manager│────►│    Planner     │  │
@@ -160,7 +160,7 @@ client.tasks.subscribe(task.id, (event) => {
 
 ## 🤖 The Agent Army
 
-The GAIA Kernel is designed to orchestrate specialized agents. You can find pre-built, production-ready agents in our dedicated repository:
+The GAIA Control Plane is designed to orchestrate specialized agents. You can find pre-built, production-ready agents in our dedicated repository:
 
 👉 **[gaia-agents](https://github.com/vishalsdk14/gaia-agents)**
 
@@ -173,9 +173,9 @@ Current featured agents:
 
 ## Core Principles
 
-### 1. Deterministic Kernel, Probabilistic Planner
+### 1. Deterministic Control Plane, Probabilistic Planner
 
-The LLM plans. The Kernel executes. The Kernel never "hallucinates" the status of a task, never skips a step, and never loses state. Given the same plan and the same agent responses, the Kernel produces the same result every time.
+The LLM plans. The Kernel executes. The Kernel never "hallucinates" the status of a task, never skips a step, and never loses state. Given the same plan and the same agent responses, the Control Plane produces the same result every time.
 
 ### 2. Capability-First Routing
 
@@ -183,7 +183,7 @@ The Planner never sees agent IDs. It only sees capabilities: `"read_pdf"`, `"sen
 
 ### 3. Deny-by-Default Mediation
 
-No agent talks to another agent. All data flows through the Kernel's Policy Engine, where it is:
+No agent talks to another agent. All data flows through the Control Plane's Policy Engine, where it is:
 * Schema-validated (input and output)
 * Permission-checked (scopes and constraints)
 * Audited (every message is logged with `task_id` and `step_id`)
@@ -202,10 +202,10 @@ GAIA natively consumes **Google A2A** (agent-to-agent) and **Anthropic MCP** (ag
 
 | Artifact | Status | Description |
 | :--- | :---: | :--- |
-| [Technical Specification](docs/design.md) | ✅ Complete | 1200+ line design document covering the full kernel architecture |
-| [Kernel Internals Guide](docs/site/docs/internals/index.md) | ✅ Complete | A 10-chapter deep dive into the GAIA architecture and modules |
+| [Technical Specification](docs/design.md) | ✅ Complete | 1200+ line design document covering the full control plane architecture |
+| [Control Plane Internals Guide](docs/site/docs/internals/index.md) | ✅ Complete | A 10-chapter deep dive into the GAIA architecture and modules |
 | Component Specifications | ✅ Complete | 12 detailed documents covering schemas, control loops, and security |
-| Core Implementation | ✅ Complete | Go Kernel with 10-phase control loop, SQLite persistence, and CEL Policy Engine |
+| Core Implementation | ✅ Complete | Go Control Plane with 10-phase control loop, SQLite persistence, and CEL Policy Engine |
 | Governance & Audit | ✅ Complete | Cryptographic HMAC chaining, state restoration, and usage policies |
 | Performance Engine | ✅ Complete | Zero-allocation interpolation, UDS/gRPC hybrid routing, and resource quotas |
 | Ecosystem & SDKs | ✅ Complete | Type-safe TS/Python SDKs, Unified CLI, and Docusaurus site |
@@ -216,7 +216,7 @@ GAIA natively consumes **Google A2A** (agent-to-agent) and **Anthropic MCP** (ag
 
 GAIA is a polyglot project. To initialize the repository and begin development, you need the following installed:
 
-* **Go 1.22+**: For the core kernel.
+* **Go 1.22+**: For the core control plane.
 * **Node.js 20+ & NPM**: For the TypeScript SDK and documentation site.
 * **Python 3.10+**: For the Python SDK and validation scripts.
 
@@ -309,7 +309,7 @@ For detailed setup instructions, visit the [Documentation Site](docs/site/docs/i
 - [x] Zero-allocation JSON interpolation engine (Nested dot-notation support)
 - [x] Hybrid routing (Local IPC/UDS path vs. Remote gRPC/HTTP path)
 - [x] Multi-tenant resource quotas & memory pressure handling
-- [x] Kernel-level performance profiling & optimizations
+- [x] Control plane-level performance profiling & optimizations
 
 ---
 

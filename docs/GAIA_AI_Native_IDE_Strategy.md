@@ -31,6 +31,19 @@ GAIA naturally fits into the second category.
 
 ---
 
+# The Kubernetes Analogy
+
+Positioning GAIA as the **"Kubernetes for AI Agents"** perfectly clarifies its role. 
+
+* **Pod vs. Control Plane:** AI IDEs (Cursor, Windsurf) are like containers/pods. GAIA is the control plane that manages them, regardless of what they do inside.
+* **State Reconciliation:** Just as Kubernetes restarts failing pods to match a desired state, GAIA intercepts failing agent tasks, replans, and resumes.
+* **Resource Governance:** GAIA enforces token limits and cost constraints exactly like Kubernetes enforces CPU/Memory quotas.
+* **Generic Extensibility:** GAIA is not an agent itself; it is the capability-driven infrastructure where developers can register tools and constraints dynamically.
+
+This analogy transforms competing IDEs from threats into integration partners.
+
+---
+
 # Core Market Reality
 
 ## Current Market Direction
@@ -77,7 +90,7 @@ another agent framework
 Instead:
 
 ```text
-Deterministic runtime and governance kernel for autonomous AI systems.
+Deterministic runtime and governance control plane for autonomous AI systems.
 ```
 
 ---
@@ -101,7 +114,7 @@ User
 	↓
 AI-native IDE / Agent
 	↓
-GAIA Kernel
+GAIA Control Plane
 	↓
 Filesystem / Git / Terminal / APIs
 ```
@@ -119,11 +132,11 @@ GAIA becomes:
 
 # What Makes GAIA Technically Interesting
 
-## 1. Deterministic Kernel / Probabilistic Planner
+## 1. Deterministic Control Plane / Probabilistic Planner
 
 ```text
 The LLM plans.
-The kernel executes.
+The control plane executes.
 ```
 
 This separation avoids:
@@ -409,7 +422,7 @@ Do not dilute GAIA into:
 The strongest position is:
 
 ```text
-Deterministic governance and execution infrastructure for autonomous AI systems.
+The Kubernetes for AI Agents: A generic orchestration and control plane for multi-agent systems.
 ```
 
-That category is still relatively open.
+By owning the generic infrastructure layer, GAIA becomes the indispensable foundation for every AI-native IDE, enterprise workflow, and multi-agent system.
