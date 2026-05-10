@@ -1,7 +1,7 @@
 <div align="center">
   <img src="https://raw.githubusercontent.com/vishalsdk14/GAIA/main/docs/assets/logo.png" width="120" height="120" alt="GAIA Logo" />
   <h1>GAIA</h1>
-  <p><b>The Runtime for Building Reliable AI Agent Systems.</b></p>
+  <p><b>The Kubernetes for AI Agents.</b></p>
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Status: Production Ready](https://img.shields.io/badge/Status-Phase%2011%20Complete-green.svg)](#roadmap)
@@ -191,6 +191,21 @@ No agent talks to another agent. All data flows through the Control Plane's Poli
 ### 4. Protocol Interoperability
 
 GAIA natively consumes **Google A2A** (agent-to-agent) and **Anthropic MCP** (agent-to-tool) through protocol adapters. An A2A agent, an MCP tool, and a native GAIA agent can all participate in the same task, in the same plan, seamlessly.
+
+---
+
+## 🔬 Research & Philosophy
+
+GAIA is designed as a production-ready implementation of the **CoALA (Cognitive Architectures for Language Agents)** framework, bridging the gap between cognitive neuroscience and autonomous software engineering. 
+
+By structuring the LLM as the core of a broader cognitive architecture, GAIA provides the missing operational scaffolding:
+*   **Working Memory**: Handled by GAIA's bounded context window and interpolator.
+*   **Long-Term Memory**: Managed via GAIA's Tiered State Store (SQLite persistence).
+*   **Decision Procedure**: Enforced by GAIA's deterministic 10-Phase Control Loop.
+*   **Internal Actions**: Executed by the Planner (LLM-based reasoning and abstraction).
+*   **External Actions**: Routed through the Capability Registry (A2A and MCP grounding).
+
+We subscribe to the **Durable Execution** philosophy: agent systems must be replayable, recoverable, and stateful.
 
 ---
 
@@ -392,6 +407,6 @@ GAIA is distributed under the [MIT License](LICENSE).
 
 <div align="center">
 
-*"The goal of GAIA is to provide the stable ground upon which a billion autonomous agents can safely and reliably work."*
+*"What Kubernetes did for containers, GAIA does for autonomous AI agents — deterministic orchestration, governance, and reliability at scale."*
 
 </div>
