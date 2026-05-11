@@ -207,6 +207,16 @@ By structuring the LLM as the core of a broader cognitive architecture, GAIA pro
 
 We subscribe to the **Durable Execution** philosophy: agent systems must be replayable, recoverable, and stateful.
 
+### Solving the Agent Orchestration Crisis
+
+Current research identifies critical architectural weaknesses in mainstream AI agent systems. GAIA is specifically engineered to solve these exact problems:
+
+1. **From Chat History to Task Graph:** We replace fragile "prompt pipelines" with a deterministic DAG (Directed Acyclic Graph) execution state.
+2. **From Agent Chaos to Central Control:** We reject peer-to-peer agent communication. All interactions are mediated by the central Control Plane.
+3. **Separating Cognition from Execution:** The LLM only proposes actions (Planner); the Go Kernel validates and executes them (Runtime).
+4. **Constitutional Enforcement:** GAIA's CEL Policy Engine acts as a "Deny-by-Default" firewall, ensuring strict governance and safety.
+5. **Durable Cognitive Runtime:** Built with schedulers, event buses, snapshots, and retries to guarantee long-horizon stability.
+
 ---
 
 ## Current Status
